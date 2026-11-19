@@ -1,0 +1,1434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jeveration: System One Models Now Generate</title>
+<meta name="description" content="Jeveration lets a frozen vision-language model return a whole 512 px image as one decision in a single forward pass, in 78 ms on one H200. One checkpoint covers text-to-image, image-to-image and dense prediction.">
+<meta property="og:title" content="Jeveration: System One Models Now Generate">
+<meta property="og:description" content="A frozen vision-language model returns a whole image as one decision in a single forward pass, 122x faster than Janus-Pro-7B.">
+<meta property="og:image" content="https://carol-lyh.github.io/Jeveration/assets/social-card.jpg">
+<meta property="og:url" content="https://carol-lyh.github.io/Jeveration/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a white sheet centred on a grey ground. Three numbered chapters, each on a light tint of one logo colour
+   (J red, e green, v blue); a bar that stays at the top jumps between them. Text, tables and charts run the sheet's full
+   width; pictures are a little narrower and centred. */
+:root {
+  --bg: #e6e9ef;
+  --surface: #ffffff;
+  --nav-glass: rgba(255, 255, 255, 0.86);
+  --ink: #12151b;
+  --ink-2: #414856;
+  --ink-3: #5c6474;
+  --rule: #e2e5eb;
+  --rule-strong: #c6cbd5;
+  --accent: #eb6834;
+  --accent-ink: #b0441a;
+  --accent-wash: #fdefe8;
+  --other: #7d8697;
+  --fam-diff: #1f9acb;
+  --fam-mask: #14966f;
+  --fam-ar: #aa66cc;
+  --plate: #ffffff;
+  --jev-r: #eb5757;
+  --jev-g: #27ae60;
+  --jev-b: #2f80ed;
+  --c1-ink: #b3302f;
+  --c1-tint: #faf5f2;
+  --c1-soft: #f5ded6;
+  --c1-rule: #eddcd4;
+  --c2-ink: #17703d;
+  --c2-tint: #f4f6ee;
+  --c2-soft: #deeacd;
+  --c2-rule: #dfe5d1;
+  --c3-ink: #1c5cb8;
+  --c3-tint: #f2f3f8;
+  --c3-soft: #d6ddf5;
+  --c3-rule: #d7daea;
+  --shade: rgba(24, 32, 52, 0.30);
+  --f-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Instrument Sans", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sheet: 1096px;
+  --wide: 968px;
+  --fig: 820px;
+  --fig-s: 680px;
+  --nav-h: 56px;
+  color-scheme: light;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #07080b;
+    --surface: #14171e;
+    --nav-glass: rgba(20, 23, 30, 0.86);
+    --ink: #eceef2;
+    --ink-2: #bac0cc;
+    --ink-3: #9aa1ae;
+    --rule: #262b35;
+    --rule-strong: #3b414d;
+    --accent: #e8693a;
+    --accent-ink: #ff9b6e;
+    --accent-wash: #2e1d16;
+    --other: #8a93a4;
+    --fam-diff: #3aa7d6;
+    --fam-mask: #25a57e;
+    --fam-ar: #b97ad8;
+    --plate: #eef0f3;
+    --jev-r: #f07272;
+    --jev-g: #3cc47a;
+    --jev-b: #5c9cf2;
+    --c1-ink: #ffa39c;
+    --c1-tint: #1c1719;
+    --c1-soft: #4a2426;
+    --c1-rule: #3d2224;
+    --c2-ink: #7fdca8;
+    --c2-tint: #151c1a;
+    --c2-soft: #1c4630;
+    --c2-rule: #1f3a2a;
+    --c3-ink: #9cc2fa;
+    --c3-tint: #151a22;
+    --c3-soft: #223d68;
+    --c3-rule: #22324d;
+    --shade: rgba(0, 0, 0, 0.8);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #07080b;
+  --surface: #14171e;
+  --nav-glass: rgba(20, 23, 30, 0.86);
+  --ink: #eceef2;
+  --ink-2: #bac0cc;
+  --ink-3: #9aa1ae;
+  --rule: #262b35;
+  --rule-strong: #3b414d;
+  --accent: #e8693a;
+  --accent-ink: #ff9b6e;
+  --accent-wash: #2e1d16;
+  --other: #8a93a4;
+  --fam-diff: #3aa7d6;
+  --fam-mask: #25a57e;
+  --fam-ar: #b97ad8;
+  --plate: #eef0f3;
+  --jev-r: #f07272;
+  --jev-g: #3cc47a;
+  --jev-b: #5c9cf2;
+  --c1-ink: #ffa39c;
+  --c1-tint: #1c1719;
+  --c1-soft: #4a2426;
+  --c1-rule: #3d2224;
+  --c2-ink: #7fdca8;
+  --c2-tint: #151c1a;
+  --c2-soft: #1c4630;
+  --c2-rule: #1f3a2a;
+  --c3-ink: #9cc2fa;
+  --c3-tint: #151a22;
+  --c3-soft: #223d68;
+  --c3-rule: #22324d;
+  --shade: rgba(0, 0, 0, 0.8);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-padding-top: calc(var(--nav-h) + env(safe-area-inset-top, 0px)); }
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 17px/1.65 var(--f-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+/* the strip above the bar on a phone with a notch */
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--surface); }
+img { max-width: 100%; height: auto; display: block; }
+[hidden] { display: none !important; }
+a { color: var(--accent-ink); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button { font: inherit; color: inherit; }
+
+/* ---------- sheet and frame ---------- */
+.sheet {
+  max-width: var(--sheet);
+  margin-inline: auto;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--rule), 0 0 80px -30px var(--shade);
+}
+.wide {
+  max-width: calc(var(--wide) + 32px);
+  margin-inline: auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+@media (min-width: 720px) {
+  .wide {
+    max-width: calc(var(--wide) + 64px);
+    padding-left: max(32px, env(safe-area-inset-left, 0px));
+    padding-right: max(32px, env(safe-area-inset-right, 0px));
+  }
+}
+.prose p { margin: 0 0 1em; }
+.prose p:last-child { margin-bottom: 0; }
+strong { font-weight: 700; }
+
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h2, h3 { font-family: var(--f-body); }
+h2 { font-size: clamp(28px, 3.6vw, 42px); font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; }
+h3 { font-size: clamp(21px, 2.4vw, 25px); font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; }
+
+/* ---------- bar at the top: jump to a chapter ---------- */
+.topnav {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 20;
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+}
+@supports ((-webkit-backdrop-filter: blur(8px)) or (backdrop-filter: blur(8px))) {
+  .topnav { background: var(--nav-glass); -webkit-backdrop-filter: saturate(1.4) blur(12px); backdrop-filter: saturate(1.4) blur(12px); }
+}
+.topnav-in { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: var(--nav-h); }
+.brand {
+  font: 800 22px/1 var(--f-display);
+  letter-spacing: -0.03em;
+  color: var(--ink);
+  text-decoration: none;
+  transition: opacity .2s ease, visibility .2s ease;
+}
+.brand .j, .wordmark .j { color: var(--jev-r); }
+.brand .e, .wordmark .e { color: var(--jev-g); }
+.brand .v, .wordmark .v { color: var(--jev-b); }
+.topnav.at-top .brand { opacity: 0; visibility: hidden; }
+.seg {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--bg);
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.seg::-webkit-scrollbar { display: none; }
+.seg a {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  font: 600 14.5px/1.2 var(--f-body);
+  color: var(--ink-2);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color .2s ease;
+}
+.seg a b { font: 800 15.5px/1 var(--f-display); color: var(--c-ink); }
+.seg a:hover, .seg a[aria-current="true"] { color: var(--ink); }
+.seg a[data-part="1"] { --c-ink: var(--c1-ink); }
+.seg a[data-part="2"] { --c-ink: var(--c2-ink); }
+.seg a[data-part="3"] { --c-ink: var(--c3-ink); }
+.seg-thumb {
+  position: absolute;
+  z-index: 0;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: var(--w, 0px);
+  transform: translateX(var(--x, 0px));
+  border-radius: 999px;
+  background: var(--thumb, var(--surface));
+  opacity: 0;
+  transition: transform .32s cubic-bezier(.3, .8, .2, 1), width .32s cubic-bezier(.3, .8, .2, 1), background-color .32s ease, opacity .2s ease;
+}
+.seg.has-active .seg-thumb { opacity: 1; }
+
+/* ---------- hero ---------- */
+.hero { padding-block: clamp(28px, 5vw, 60px) 0; }
+.hero-top { display: grid; gap: 18px; }
+.wordmark {
+  font-size: clamp(44px, 13vw, 124px);
+  font-weight: 800;
+  line-height: 0.88;
+  letter-spacing: -0.04em;
+  font-variation-settings: "opsz" 96;
+}
+.subtitle {
+  font: 600 clamp(22px, 3.5vw, 36px)/1.15 var(--f-display);
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+.authors { margin: 4px 0 0; color: var(--ink); font-size: 17px; font-weight: 500; }
+.affil { margin: -12px 0 0; color: var(--ink-2); font-size: 15px; }
+.authors sup, .affil sup { font-size: 0.7em; }
+.links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 16px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font: 600 15px/1.2 var(--f-body);
+  text-decoration: none;
+}
+a.pill:hover { border-color: var(--ink-2); }
+.pill[aria-disabled="true"] { color: var(--ink-3); border-style: dashed; background: transparent; cursor: default; }
+.pill .soon { font: 500 11.5px/1 var(--f-mono); color: var(--ink-3); }
+
+.teaser { margin-top: clamp(26px, 4vw, 40px); }
+.teaser img { width: 100%; border-radius: 10px; }
+figcaption, .caption { font-size: 14.5px; line-height: 1.55; color: var(--ink-2); }
+.teaser figcaption { margin-top: 12px; }
+
+/* ---------- latency chart (Fig. 1 bars) ---------- */
+.race { margin: clamp(28px, 4vw, 44px) 0 0; }
+.fig-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; margin-bottom: 14px; }
+.fig-title { font: 600 17px/1.3 var(--f-body); margin: 0; }
+.fig-sub { font-size: 14.5px; color: var(--ink-2); margin: 2px 0 0; }
+.race-ctl { display: flex; align-items: center; gap: 14px; }
+.race-clock { font: 500 14px/1 var(--f-mono); color: var(--ink-2); font-variant-numeric: tabular-nums; min-width: 5ch; text-align: right; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--rule-strong);
+  background: var(--surface);
+  font: 600 14px/1.2 var(--f-body);
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--ink-2); }
+.btn:disabled { cursor: default; color: var(--ink-3); }
+.btn svg { width: 14px; height: 14px; fill: currentColor; }
+
+.race-grid {
+  --gutter: 64px;
+  --r1: 56px;
+  --rh: 42px;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-rows: var(--r1) repeat(4, var(--rh)) auto;
+  column-gap: 14px;
+  position: relative;
+}
+.r-label { display: flex; align-items: center; justify-content: flex-end; font-size: 15px; color: var(--ink); white-space: nowrap; grid-column: 1; }
+.r-label.is-ours { font-weight: 700; }
+.r-track { grid-column: 2; position: relative; z-index: 1; outline-offset: -2px; }
+.r-bar {
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  height: 18px;
+  width: calc((100% - var(--gutter)) * var(--f, 0));
+  background: var(--other);
+  border-radius: 0 4px 4px 0;
+}
+.r-track.is-ours .r-bar { background: var(--accent); min-width: 3px; }
+.r-track:hover .r-bar, .r-track:focus-visible .r-bar { filter: brightness(1.08); }
+.r-val {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  left: calc((100% - var(--gutter)) * var(--f, 0) + 8px);
+  font-size: 14px; color: var(--ink-2); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.r-track.is-ours .r-val { color: var(--ink); }
+.r-gridlines { grid-column: 2; grid-row: 1 / span 5; position: relative; pointer-events: none; }
+.r-gridlines i { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--rule); left: calc((100% - var(--gutter)) * var(--k)); }
+.r-axis { grid-column: 2; grid-row: 6; position: relative; height: 26px; border-top: 1px solid var(--rule-strong); margin-right: var(--gutter); }
+.r-axis span { position: absolute; top: 6px; transform: translateX(-50%); font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; left: calc(100% * var(--k)); white-space: nowrap; }
+.r-axis span:last-child { transform: translateX(-30%); }
+.r-anno {
+  grid-column: 2; grid-row: 1 / span 5; position: relative; pointer-events: none; z-index: 2;
+  --x0: calc((100% - var(--gutter)) * 0.00778);
+  --x1: calc((100% - var(--gutter)) * 0.95084);
+  transition: opacity .25s ease;
+}
+.r-anno .vline { position: absolute; width: 1.5px; background: var(--accent); left: var(--x1); top: calc(var(--r1) / 2); height: calc(var(--r1) / 2 + 3.5 * var(--rh) - 9px); opacity: .7; }
+.r-anno .arrow { position: absolute; height: 2px; background: var(--accent); top: calc(var(--r1) / 2 - 1px); left: calc(var(--x0) + 76px); width: calc(var(--x1) - var(--x0) - 76px); }
+.r-anno .arrow::before {
+  content: ""; position: absolute; left: -2px; top: -5px;
+  border-style: solid; border-width: 6px 10px 6px 0;
+  border-color: transparent var(--accent) transparent transparent;
+}
+.r-anno .arrow b {
+  position: absolute; left: 50%; bottom: 9px; transform: translateX(-50%);
+  font: 700 clamp(13px, 2vw, 17px)/1 var(--f-body); color: var(--ink); white-space: nowrap;
+}
+.race-grid.is-running .r-anno { opacity: 0; }
+.race-grid.is-running .r-track:not(.is-done) .r-val { visibility: hidden; }
+
+/* tooltip shared by both charts */
+.tip {
+  position: absolute; z-index: 5; pointer-events: none;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--rule-strong); border-radius: 8px;
+  padding: 8px 10px; font-size: 13.5px; line-height: 1.35;
+  box-shadow: 0 6px 20px rgba(10, 14, 22, .12);
+  white-space: nowrap;
+}
+.tip strong { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
+.tip span { display: block; color: var(--ink-2); }
+
+/* ---------- bands of the sheet ---------- */
+.band { padding-block: clamp(28px, 4vw, 44px) clamp(48px, 7vw, 76px); }
+.band-end { padding-block: clamp(48px, 7vw, 76px) clamp(28px, 4vw, 40px); }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.tldr { font-size: clamp(18px, 2.3vw, 23px); line-height: 1.45; margin: 4px 0 0; text-wrap: pretty; }
+
+/* ---------- the three chapters ---------- */
+.part { padding-block: clamp(44px, 7vw, 80px); background: var(--tint); }
+.part-1 { --c: var(--jev-r); --c-ink: var(--c1-ink); --tint: var(--c1-tint); --soft: var(--c1-soft); --prule: var(--c1-rule); }
+.part-2 { --c: var(--jev-g); --c-ink: var(--c2-ink); --tint: var(--c2-tint); --soft: var(--c2-soft); --prule: var(--c2-rule); }
+.part-3 { --c: var(--jev-b); --c-ink: var(--c3-ink); --tint: var(--c3-tint); --soft: var(--c3-soft); --prule: var(--c3-rule); }
+.part-head { display: flex; align-items: center; gap: clamp(16px, 2.6vw, 30px); margin-bottom: clamp(20px, 3vw, 32px); }
+.part-num {
+  flex: none;
+  font: 800 clamp(76px, 12vw, 132px)/0.8 var(--f-display);
+  letter-spacing: -0.05em;
+  font-variation-settings: "opsz" 96;
+  color: var(--c);
+}
+.part-title { min-width: 0; }
+.part-label {
+  font: 700 clamp(14px, 1.7vw, 17px)/1 var(--f-body);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--c-ink);
+  margin: 0 0 12px;
+}
+.sub { margin-top: clamp(36px, 5vw, 56px); }
+.part-head + .sub { margin-top: 0; }
+.sub > h3 { margin-bottom: 12px; }
+.part .sub > h3::before {
+  content: "";
+  display: inline-block;
+  width: 0.46em;
+  height: 0.46em;
+  margin-right: 0.5em;
+  border-radius: 2px;
+  background: var(--c);
+  vertical-align: 0.1em;
+}
+.abstract p { font-size: 16.5px; line-height: 1.7; }
+.lead p { font-size: clamp(18px, 2vw, 19.5px); line-height: 1.6; }
+
+/* ---------- key facts ---------- */
+.facts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr); margin: 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.facts > div { padding: 22px 24px 22px 0; min-width: 0; }
+.facts > div + div { padding-left: 24px; border-left: 1px solid var(--rule); }
+/* one line each: '1 checkpoint' is about 5.9em wide and must fit the third column at every width with three columns */
+.facts dt { font: 700 clamp(30px, 4.2vw, 48px)/1 var(--f-body); letter-spacing: -0.025em; white-space: nowrap; }
+.facts dd { margin: 10px 0 0; font-size: 15.5px; line-height: 1.45; color: var(--ink-2); text-wrap: balance; }
+
+/* ---------- folded details ---------- */
+details.more {
+  margin-top: 18px;
+  padding-inline: 16px;
+  background: var(--surface);
+  border: 1px solid var(--prule, var(--rule));
+  border-radius: 10px;
+}
+details.more > summary { cursor: pointer; padding: 12px 0; font: 600 15px/1.3 var(--f-body); color: var(--c-ink, var(--accent-ink)); list-style: none; display: flex; align-items: center; gap: 10px; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::before { content: "+"; font: 500 16px/1 var(--f-mono); width: 1ch; }
+details.more[open] > summary::before { content: "\2212"; }
+details.more[open] { padding-bottom: 16px; }
+details.more .tbl-wrap { margin-top: 4px; }
+
+.mix { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 8px 0 0; }
+.mix-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-width: 0; }
+.mix-pair figure { margin: 0; }
+.mix-pair img { border-radius: 6px; }
+.mix-pair figcaption { font-size: 13.5px; margin-top: 6px; }
+.mix-pair .is-ours figcaption { color: var(--ink); font-weight: 700; }
+.mix + .caption { margin-top: 12px; }
+
+.plate { background: var(--plate); border: 1px solid var(--prule, var(--rule)); border-radius: 12px; padding: clamp(10px, 2vw, 22px); overflow-x: auto; }
+.plate img { width: 100%; min-width: 640px; }
+.plate + figcaption { margin-top: 12px; }
+figure { margin: 0; }
+
+.phases { list-style: none; padding: 0; margin: 20px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; counter-reset: ph; }
+.phases li { background: var(--surface); border: 1px solid var(--prule, var(--rule)); border-radius: 12px; padding: 18px 20px; min-width: 0; counter-increment: ph; }
+.phases li::before { content: "Phase " counter(ph); display: block; font: 500 12.5px/1 var(--f-mono); color: var(--c-ink, var(--accent-ink)); margin-bottom: 10px; letter-spacing: .02em; }
+.phases h4 { font: 700 17px/1.3 var(--f-body); margin: 0 0 6px; }
+.phases p { margin: 0; font-size: 15.5px; color: var(--ink-2); }
+.phases p strong { color: var(--ink); }
+.after-phases { margin-top: 16px; }
+
+/* ---------- gallery ---------- */
+.gallery { list-style: none; padding: 0; margin: 20px 0 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.gallery li { min-width: 0; }
+.tile { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 6px; }
+.tile img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; transition: opacity .15s; }
+.tile:hover img { opacity: .9; }
+
+/* ---------- scatter ---------- */
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; color: var(--ink); margin: 0 0 8px; padding: 0; list-style: none; }
+.legend li { display: inline-flex; align-items: center; gap: 7px; }
+.legend svg { width: 14px; height: 14px; }
+.scatter { position: relative; margin-top: 4px; }
+.scatter svg { display: block; width: 100%; overflow: visible; }
+.sc-grid { stroke: var(--rule); stroke-width: 1; }
+.sc-axis { stroke: var(--rule-strong); stroke-width: 1; }
+.sc-tick { fill: var(--ink-2); font: 12.5px var(--f-body); font-variant-numeric: tabular-nums; }
+.sc-title { fill: var(--ink-2); font: 600 12.5px var(--f-body); }
+.sc-label { fill: var(--ink-2); font: 12.5px var(--f-body); }
+.sc-label.is-ours { fill: var(--ink); font-weight: 700; font-size: 13.5px; }
+.m-other { fill: var(--other); stroke: var(--surface); stroke-width: 2; }
+.m-ours { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.sc-hit { fill: transparent; cursor: default; }
+.sc-hit:focus { outline: none; }
+.sc-hit:focus-visible { stroke: var(--accent); stroke-width: 2; }
+.chart-card { background: var(--surface); border: 1px solid var(--prule, var(--rule)); border-radius: 12px; padding: clamp(14px, 2.4vw, 24px); }
+
+/* ---------- tables ---------- */
+.tbl-wrap { overflow-x: auto; margin-top: 18px; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 14.5px; font-variant-numeric: tabular-nums; }
+.tbl th, .tbl td { padding: 8px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--rule); }
+.tbl th:first-child, .tbl td:first-child { text-align: left; }
+.tbl thead th { font-weight: 600; color: var(--ink-2); font-size: 13.5px; border-bottom: 1px solid var(--rule-strong); vertical-align: bottom; }
+.tbl .grp td { font-weight: 600; font-style: italic; color: var(--ink-2); padding-top: 16px; border-bottom-color: var(--rule-strong); }
+.tbl tr.is-ours td { background: var(--accent-wash); color: var(--ink); }
+.tbl tr.is-ours td:first-child, .tbl td.key { font-weight: 700; }
+.tbl sup { font-size: 10.5px; color: var(--ink-3); margin-left: 1px; }
+.tbl td.fam { text-align: left; color: var(--ink-2); font-weight: 400; }
+.tbl tr.is-ours td.fam { color: var(--ink); }
+.tbl td.fam i { display: inline-block; width: 9px; height: 9px; border-radius: 1.5px; margin-right: 7px; vertical-align: 0; }
+.fam-diff { background: var(--fam-diff); }
+.fam-mask { background: var(--fam-mask); }
+.fam-ar { background: var(--fam-ar); }
+.fam-dec { background: var(--accent); }
+.tbl-note { margin: 10px 0 0; font-size: 13.5px; line-height: 1.55; color: var(--ink-2); }
+.tbl.compact { width: auto; min-width: min(100%, 520px); }
+
+/* ---------- image-to-image ---------- */
+.cmp-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 26px 18px; margin-top: 20px; }
+.cmp { min-width: 0; }
+.cmp-stage { position: relative; aspect-ratio: 1; overflow: hidden; border-radius: 10px; background: var(--rule); --pos: 50%; user-select: none; -webkit-user-select: none; cursor: ew-resize; touch-action: pan-y; }
+.cmp-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cmp-stage .in { clip-path: inset(0 calc(100% - var(--pos)) 0 0); }
+.cmp-line { position: absolute; top: 0; bottom: 0; left: var(--pos); width: 2px; margin-left: -1px; background: #ffffff; box-shadow: 0 0 0 1px rgba(0,0,0,.25); pointer-events: none; }
+.cmp-knob { position: absolute; top: 50%; left: var(--pos); width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; background: #ffffff; box-shadow: 0 1px 6px rgba(0,0,0,.35); pointer-events: none; display: grid; place-items: center; }
+.cmp-knob svg { width: 18px; height: 18px; fill: #1b1f27; }
+.cmp-tag { position: absolute; top: 8px; padding: 3px 7px; font: 600 11.5px/1.2 var(--f-body); letter-spacing: .04em; text-transform: uppercase; color: #ffffff; background: rgba(12, 14, 18, .62); border-radius: 4px; pointer-events: none; }
+.cmp-tag.l { left: 8px; }
+.cmp-tag.r { right: 8px; }
+.cmp-stage img { pointer-events: none; -webkit-user-drag: none; }
+.cmp-stage input {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+  opacity: 0; pointer-events: none;
+}
+.cmp-stage:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cmp figcaption { margin-top: 10px; }
+.cmp figcaption strong { display: block; color: var(--ink); font-size: 15.5px; }
+
+/* ---------- dense ---------- */
+.dense { display: grid; gap: 14px; margin-top: 20px; }
+.dense-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.dense-row figure { min-width: 0; }
+.dense-row img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; }
+.dense-row figcaption { font-size: 13px; margin-top: 4px; }
+
+/* ---------- pictures are narrower than the text and centred; the diagram and the charts keep the full width ---------- */
+.teaser img, .teaser figcaption, .mix, .mix + .caption, .cmp-grid, .dense { max-width: var(--fig); margin-inline: auto; }
+.mix, .mix + .caption { max-width: var(--fig-s); }
+.cmp-grid { max-width: 750px; }
+
+/* ---------- ablations ---------- */
+.abl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 24px; }
+.abl article { background: var(--surface); border: 1px solid var(--prule, var(--rule)); border-radius: 12px; padding: 18px 18px 12px; min-width: 0; display: flex; flex-direction: column; }
+.abl h4 { font: 700 17px/1.3 var(--f-body); margin: 0 0 6px; }
+.abl p { margin: 0 0 12px; font-size: 14.5px; color: var(--ink-2); flex: 1; }
+.abl p strong { color: var(--ink); }
+.abl .tbl { font-size: 14px; }
+.abl .tbl th, .abl .tbl td { padding: 6px 4px; }
+.abl .tbl tr:last-child td { border-bottom: 0; }
+
+/* ---------- bibtex ---------- */
+.bib { position: relative; margin-top: 18px; }
+.bib pre { margin: 0; background: var(--bg); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; overflow-x: auto; font: 13.5px/1.6 var(--f-mono); color: var(--ink); }
+.bib .btn { position: absolute; top: 10px; right: 10px; }
+
+footer.foot { padding-block: 22px 36px; border-top: 1px solid var(--rule); color: var(--ink-3); font-size: 13.5px; }
+
+/* ---------- lightbox ---------- */
+dialog.lb { border: 0; padding: 0; background: transparent; max-width: min(92vw, 560px); width: 100%; max-height: 94vh; overflow: auto; color: var(--ink); }
+dialog.lb::backdrop { background: rgba(8, 10, 14, .82); }
+.lb-card { background: var(--surface); border-radius: 12px; overflow: hidden; }
+.lb-card img { width: 100%; aspect-ratio: 1; }
+.lb-bar { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; }
+.lb-bar p { flex: 1; margin: 0; font-size: 14.5px; line-height: 1.5; color: var(--ink); min-width: 0; }
+.lb-bar .btn { padding: 6px 11px; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 980px) {
+  .gallery { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cmp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .abl { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+  body { font-size: 16.5px; }
+  .phases, .mix { grid-template-columns: minmax(0, 1fr); }
+  .facts { grid-template-columns: minmax(0, 1fr); }
+  .facts > div { padding: 16px 0; }
+  .facts > div + div { padding-left: 0; border-left: 0; border-top: 1px solid var(--rule); }
+  .race-grid { --gutter: 58px; --r1: 54px; --rh: 38px; column-gap: 10px; }
+  .r-label { font-size: 13.5px; }
+  .r-val { font-size: 13px; }
+  .r-anno .arrow { left: calc(var(--x0) + 66px); width: calc(var(--x1) - var(--x0) - 66px); }
+}
+@media (max-width: 640px) {
+  .brand { display: none; }
+  .topnav-in { justify-content: center; }
+  .seg a { padding: 7px 12px; font-size: 13.5px; gap: 6px; }
+}
+@media (max-width: 560px) {
+  .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cmp-grid { grid-template-columns: minmax(0, 1fr); }
+  .dense-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="sheet" id="top">
+
+<nav class="topnav at-top" id="topnav" aria-label="Chapters">
+  <div class="wide topnav-in">
+    <a class="brand" href="#top" aria-label="Jeveration, back to the top"><span class="j">J</span><span class="e">e</span><span class="v">v</span>eration</a>
+    <div class="seg" id="seg">
+      <span class="seg-thumb" aria-hidden="true"></span>
+      <a href="#method" data-part="1"><b>1</b>How it works</a>
+      <a href="#results" data-part="2"><b>2</b>Results</a>
+      <a href="#ablations" data-part="3"><b>3</b>Ablations</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wide hero-top">
+    <h1 class="wordmark" aria-label="Jeveration"><span class="j">J</span><span class="e">e</span><span class="v">v</span>eration</h1>
+    <p class="subtitle">System One Models Now Generate</p>
+    <p class="tldr">A frozen vision-language model returns a whole 512&nbsp;px image as <strong>one decision</strong>, in a <strong>single forward pass</strong>.</p>
+    <p class="authors">Yuhe Liu<sup>*</sup>, Qi Li<sup>*</sup>, Shihua Zhang, Xinchao Wang<sup>&#8224;</sup></p>
+    <p class="affil">National University of Singapore<br><sup>*</sup>Equal contribution &#183; <sup>&#8224;</sup>Corresponding author</p>
+    <nav class="links" aria-label="Resources">
+      <a class="pill" href="https://huggingface.co/papers/2611.24738">Paper</a>
+      <a class="pill" href="https://arxiv.org/abs/2611.24738">arXiv</a>
+      <a class="pill" href="https://github.com/Carol-lyh/Jeveration">Code</a>
+      <a class="pill" href="https://huggingface.co/linlinlinlinsdada/Jeveration">Weights</a>
+      <a class="pill" href="#bibtex">BibTeX</a>
+    </nav>
+  </div>
+
+  <figure class="wide teaser">
+    <img src="assets/teaser.webp" width="2400" height="1145" fetchpriority="high"
+         alt="Text-to-image samples around a mosaic of many generated thumbnails that spells Jeveration, with image-to-image results and NYUv2 dense predictions below.">
+    <figcaption>Text-to-image samples (top), image-to-image generation and dense prediction (bottom). One checkpoint, one forward pass per task.</figcaption>
+  </figure>
+</header>
+
+<main>
+  <section class="band" id="highlights" aria-labelledby="highlights-h">
+    <div class="wide">
+      <h2 id="highlights-h" class="vh">Highlights</h2>
+      <dl class="facts">
+        <div><dt>78 ms</dt><dd>for a 512&nbsp;px image, end to end on one H200</dd></div>
+        <div><dt>122&#215;</dt><dd>faster than Janus-Pro-7B, at 0.74 GenEval</dd></div>
+        <div><dt>1 checkpoint</dt><dd>for text-to-image, image-to-image and dense prediction</dd></div>
+      </dl>
+
+      <figure class="race" aria-labelledby="race-title">
+        <div class="fig-head">
+          <div>
+            <p class="fig-title" id="race-title">Latency per image</p>
+            <p class="fig-sub">End to end on one H200 at batch 1, decoding included</p>
+          </div>
+          <div class="race-ctl">
+            <span class="race-clock" id="race-clock" aria-hidden="true"></span>
+            <button type="button" class="btn" id="race-replay"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>Replay at real speed</button>
+          </div>
+        </div>
+        <div class="race-grid" id="race-grid"></div>
+        <p class="vh" id="race-status" aria-live="polite"></p>
+      </figure>
+
+      <details class="more" open>
+        <summary>Abstract</summary>
+        <div class="prose abstract">
+          <p>System One models such as Jev return decisions through fast, parallel prediction. In this paper, we introduce Jeveration, showing that the same decision paradigm can also generate high-quality images in a single forward pass. Jeveration builds on a frozen vision-language model, repurposing its visual-semantic knowledge for holistic image generation. The key challenge is to maintain global consistency. A single prompt admits many valid images, yet parallel predictions must converge on a coherent whole. We therefore condition all positions on a shared random state to coordinate parallel predictions, so that each draw yields a different but coherent image. Since the model tends to ignore this state under direct image supervision, we first learn a distribution over discrete image codes to guide single-pass generation. Beyond text-to-image generation, we further unify image-to-image generation and dense prediction within the same architecture, so that one checkpoint supports all three tasks, each in one forward pass. Experiments show that Jeveration generates a 512&#215;512 image in 78 ms, up to 122&#215; faster than existing unified models, while maintaining competitive image quality and dense prediction performance.</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section class="part part-1" id="method" aria-labelledby="method-h">
+    <div class="wide">
+      <div class="part-head">
+        <span class="part-num" aria-hidden="true">1</span>
+        <div class="part-title">
+          <p class="part-label">How it works</p>
+          <h2 id="method-h">Generation is one decision</h2>
+        </div>
+      </div>
+      <div class="prose lead">
+        <p>Autoregressive models generate an image token by token, and diffusion models by iterative denoising. Jeveration removes the sequential sampling. It asks a frozen vision-language model for <strong>one typed decision</strong>, in which <strong>all 128 codes of the image are chosen in parallel</strong>.</p>
+      </div>
+
+      <div class="sub">
+        <h3>Parallel choices need a shared random state</h3>
+        <div class="prose">
+          <p>One prompt admits many valid images. When every code is chosen on its own, different positions follow different images and <strong>the regions do not fit together</strong>. Jeveration draws <strong>one random state per image</strong> and conditions every position on it, so each draw yields a <strong>different but coherent image</strong>.</p>
+        </div>
+        <div class="mix">
+          <div class="mix-pair">
+            <figure><img src="assets/mix/face_ind.jpg" width="512" height="512" loading="lazy" alt="Portrait with no joint decision, its regions do not match."><figcaption>No joint decision</figcaption></figure>
+            <figure class="is-ours"><img src="assets/mix/face_jev.jpg" width="512" height="512" loading="lazy" alt="Portrait of a woman wearing a flower crown generated by Jeveration."><figcaption>Jeveration</figcaption></figure>
+          </div>
+          <div class="mix-pair">
+            <figure><img src="assets/mix/leo_ind.jpg" width="512" height="512" loading="lazy" alt="Snow leopard with no joint decision, its regions do not match."><figcaption>No joint decision</figcaption></figure>
+            <figure class="is-ours"><img src="assets/mix/leo_jev.jpg" width="512" height="512" loading="lazy" alt="Snow leopard resting on a rock ledge generated by Jeveration."><figcaption>Jeveration</figcaption></figure>
+          </div>
+        </div>
+        <p class="caption">Codes sampled independently from the first-phase model do not fit together, while Jeveration produces coherent images.</p>
+      </div>
+
+      <div class="sub">
+        <h3>Learned in two phases</h3>
+        <div class="prose">
+          <p>Trained on target images alone, the model <strong>ignores the random state</strong>. Training therefore has <strong>two phases</strong>.</p>
+        </div>
+        <ol class="phases">
+          <li>
+            <h4>Learn the image distribution</h4>
+            <p>The model first learns to <strong>fill in masked image codes</strong>. This teaches it how the codes of an image depend on each other.</p>
+          </li>
+          <li>
+            <h4>Learn to decide</h4>
+            <p>The model then turns random states into <strong>whole images in one pass</strong>. The first-phase model judges each sample and guides the decisions until the codes fit together.</p>
+          </li>
+        </ol>
+        <div class="prose after-phases">
+          <p>The first-phase model is used <strong>only in training</strong>, so inference stays a <strong>single forward pass</strong>.</p>
+        </div>
+      </div>
+
+      <div class="sub">
+        <h3>One frozen model for every task</h3>
+        <div class="prose">
+          <p>The backbone is a <strong>frozen Qwen3.5-4B</strong> with shared LoRA adapters. <strong>Task heads</strong> read the decision tokens and return image codes, or segmentation, depth and surface normals for dense prediction.</p>
+        </div>
+        <figure style="margin-top:22px">
+          <div class="plate"><img src="assets/arch.svg" width="1320" height="361" loading="lazy" alt="Architecture: input and decision tokens pass through a frozen vision-language model with shared LoRA adapters in one forward pass. An image head and decoder produce text-to-image and image-to-image outputs, and dense heads produce segmentation, depth and normals."></div>
+          <figcaption>Input and decision tokens pass through the frozen model once. Decision tokens start from a random state for image generation and act as spatial queries for dense prediction.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="part part-2" id="results" aria-labelledby="results-h">
+    <div class="wide">
+      <div class="part-head">
+        <span class="part-num" aria-hidden="true">2</span>
+        <div class="part-title">
+          <p class="part-label">Results</p>
+          <h2 id="results-h">One checkpoint, three tasks</h2>
+        </div>
+      </div>
+
+      <div class="sub" id="t2i">
+        <h3>Text-to-image</h3>
+        <div class="prose"><p>Selected 512&nbsp;px samples, each from <strong>one forward pass</strong>. Select a picture to see its prompt.</p></div>
+        <ul class="gallery" id="gallery">
+      <li><button type="button" class="tile" data-i="0"><img src="assets/t2i/creature-06.webp" alt="A tiny dragon sleeping inside a porcelain teacup, cozy warm light, fantasy art." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="1"><img src="assets/t2i/f5-owl.webp" alt="An owl with bright yellow eyes perched on a mossy branch at twilight, warm golden backlight, detailed feathers." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="2"><img src="assets/t2i/place-00.webp" alt="A fairy tale castle on a hill above the clouds at sunrise." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="3"><img src="assets/t2i/portrait-05.webp" alt="A head and shoulders portrait of a woman in a traditional kimono with cherry blossoms behind her." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="4"><img src="assets/t2i/art-05.webp" alt="A stained glass window depicting a phoenix in vibrant colors with light shining through." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="5"><img src="assets/t2i/food-15.webp" alt="A margherita pizza with melted mozzarella and fresh basil, glowing wood-fired oven behind." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="6"><img src="assets/t2i/animal-10.webp" alt="A sea turtle gliding over a colorful coral reef, sun rays shining through the water." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="7"><img src="assets/t2i/place-09.webp" alt="A small red boathouse on a calm Nordic lake at sunset." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="8"><img src="assets/t2i/landscape-17.webp" alt="A canyon with layered orange rock walls and a winding blue river." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="9"><img src="assets/t2i/f5-spirit-water.webp" alt="A water spirit with hair made of flowing waves and pearls, soft blue light, ethereal portrait." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="10"><img src="assets/t2i/art-07.webp" alt="A low-poly 3D illustration of a floating island with waterfalls." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="11"><img src="assets/t2i/food-07.webp" alt="A burger with melted cheese, lettuce and tomato on a wooden board, close-up." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="12"><img src="assets/t2i/creature-02.webp" alt="A spirit fox made of glowing blue flames sitting in a dark forest, magical atmosphere." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="13"><img src="assets/t2i/landscape-04.webp" alt="A waterfall cascading into an emerald pool in a tropical jungle, sun rays through the mist." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="14"><img src="assets/t2i/still-12.webp" alt="A crystal ball on a rock reflecting a sunset landscape." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="15"><img src="assets/t2i/art-10.webp" alt="A mosaic of a sunflower made of colorful tiles." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="16"><img src="assets/t2i/place-04.webp" alt="A futuristic glass city with floating gardens, utopian concept art." width="512" height="512" loading="lazy" decoding="async"></button></li>
+      <li><button type="button" class="tile" data-i="17"><img src="assets/t2i/animal-17.webp" alt="A lion&#x27;s face with a golden mane at sunset, savanna grass, cinematic lighting." width="512" height="512" loading="lazy" decoding="async"></button></li>
+        </ul>
+      </div>
+
+      <div class="sub" id="speed">
+        <h3>Quality and latency</h3>
+        <div class="prose">
+          <p>Jeveration is the <strong>fastest model in the comparison at 77.8 ms</strong> and reaches <strong>0.74 GenEval</strong>. It is <strong>98&#215; and 122&#215; faster</strong> than Janus-Pro-1B and Janus-Pro-7B, and scores 0.11 higher GenEval than four-step Show-o Turbo-512 at the same resolution.</p>
+        </div>
+        <figure class="chart-card" style="margin-top:22px" aria-labelledby="sc-title">
+          <div class="fig-head" style="margin-bottom:10px">
+            <div>
+              <p class="fig-title" id="sc-title">GenEval against latency per image</p>
+              <p class="fig-sub">Batch 1 on one H200, decoding included. Latency on a log scale.</p>
+            </div>
+          </div>
+          <ul class="legend" aria-label="Legend">
+            <li><svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6" class="m-ours" style="stroke:none"/></svg>Jeveration (ours)</li>
+            <li><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M7 0.8 13.2 7 7 13.2 0.8 7z" class="m-other" style="stroke:none"/></svg>Unified models</li>
+            <li><svg viewBox="0 0 14 14" aria-hidden="true"><rect x="1.5" y="1.5" width="11" height="11" rx="1.5" class="m-other" style="stroke:none"/></svg>Generation-only models</li>
+          </ul>
+          <div class="scatter" id="scatter"></div>
+        </figure>
+        <details class="more">
+          <summary>Full comparison table</summary>
+        <div class="tbl-wrap">
+          <table aria-describedby="tbl-note-1" class="tbl" id="main-table">
+            <thead>
+              <tr><th scope="col">Model</th><th scope="col">Family</th><th scope="col">Unified</th><th scope="col">Params (B)</th><th scope="col">Steps</th><th scope="col">Res. (px)</th><th scope="col">Speedup &#8593;</th><th scope="col">GenEval &#8593;</th><th scope="col">DPG &#8593;</th><th scope="col">HPSv2.1 &#8593;</th><th scope="col">Latency (ms) &#8595;</th></tr>
+            </thead>
+            <tbody id="main-tbody"></tbody>
+          </table>
+        </div>
+<p class="tbl-note" id="tbl-note-1">All models are timed on the same H200 at batch 1, including decoding, with released samplers at the listed steps and resolutions. Speedup is relative to Janus-Pro-7B, the slowest model listed. Params include our frozen backbone. Steps count sequential generator evaluations, or tokens for autoregressive models. Family names the image-generation family, including distilled variants. &#8224; and &#8225; mark scores from the authors and from another paper.</p>
+        </details>
+      </div>
+
+      <div class="sub" id="i2i">
+        <h3>Image-to-image</h3>
+        <div class="prose">
+          <p>The <strong>same checkpoint</strong> turns edge maps and depth maps into images, colorizes grayscale photos and transfers styles. A request takes <strong>91.7 ms</strong>, only 14 ms more than text-to-image. Point at a picture or drag across it to compare input and output.</p>
+        </div>
+        <div class="cmp-grid">
+          <figure class="cmp">
+            <div class="cmp-stage"><img src="assets/i2i/hed_024_out.webp" width="512" height="512" loading="lazy" alt="Output: a green jeep parked on a rocky mountain cliff."><img class="in" src="assets/i2i/hed_024_src.webp" width="512" height="512" loading="lazy" alt="Input: soft HED edge map of a jeep on a cliff."><span class="cmp-line"></span><span class="cmp-knob"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6 3 12l6 6zM15 6v12l6-6z"/></svg></span><span class="cmp-tag l">Input</span><span class="cmp-tag r">Output</span><input type="range" min="0" max="100" value="50" aria-label="Compare input and output, HED edges to image"></div>
+            <figcaption><strong>HED edges &#8594; image</strong></figcaption>
+          </figure>
+          <figure class="cmp">
+            <div class="cmp-stage"><img src="assets/i2i/depth_022_out.webp" width="512" height="512" loading="lazy" alt="Output: an oval diamond ring."><img class="in" src="assets/i2i/depth_022_src.webp" width="512" height="512" loading="lazy" alt="Input: depth map of a ring, bright is near."><span class="cmp-line"></span><span class="cmp-knob"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6 3 12l6 6zM15 6v12l6-6z"/></svg></span><span class="cmp-tag l">Input</span><span class="cmp-tag r">Output</span><input type="range" min="0" max="100" value="50" aria-label="Compare input and output, depth map to image"></div>
+            <figcaption><strong>Depth map &#8594; image</strong></figcaption>
+          </figure>
+          <figure class="cmp">
+            <div class="cmp-stage"><img src="assets/i2i/colorize_006_out.webp" width="512" height="512" loading="lazy" alt="Output: the mug in color, with a red flower and green leaves."><img class="in" src="assets/i2i/colorize_006_src.webp" width="512" height="512" loading="lazy" alt="Input: grayscale photo of a mug with a flower print."><span class="cmp-line"></span><span class="cmp-knob"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6 3 12l6 6zM15 6v12l6-6z"/></svg></span><span class="cmp-tag l">Input</span><span class="cmp-tag r">Output</span><input type="range" min="0" max="100" value="50" aria-label="Compare input and output, colorization"></div>
+            <figcaption><strong>Colorization</strong></figcaption>
+          </figure>
+          <figure class="cmp">
+            <div class="cmp-stage"><img src="assets/i2i/edit_173_out.webp" width="512" height="512" loading="lazy" alt="Output: the pizza slice as an anime illustration."><img class="in" src="assets/i2i/edit_173_src.webp" width="512" height="512" loading="lazy" alt="Input: photo of a pizza slice on a plate."><span class="cmp-line"></span><span class="cmp-knob"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6 3 12l6 6zM15 6v12l6-6z"/></svg></span><span class="cmp-tag l">Input</span><span class="cmp-tag r">Output</span><input type="range" min="0" max="100" value="50" aria-label="Compare input and output, anime style"></div>
+            <figcaption><strong>Anime</strong></figcaption>
+          </figure>
+          <figure class="cmp">
+            <div class="cmp-stage"><img src="assets/i2i/edit_008_out.webp" width="512" height="512" loading="lazy" alt="Output: the earrings in Studio Ghibli style with a sky background."><img class="in" src="assets/i2i/edit_008_src.webp" width="512" height="512" loading="lazy" alt="Input: photo of a pair of hoop earrings."><span class="cmp-line"></span><span class="cmp-knob"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6 3 12l6 6zM15 6v12l6-6z"/></svg></span><span class="cmp-tag l">Input</span><span class="cmp-tag r">Output</span><input type="range" min="0" max="100" value="50" aria-label="Compare input and output, Studio Ghibli style"></div>
+            <figcaption><strong>Studio Ghibli</strong></figcaption>
+          </figure>
+          <figure class="cmp">
+            <div class="cmp-stage"><img src="assets/i2i/edit_219_out.webp" width="512" height="512" loading="lazy" alt="Output: the small airplane as a watercolor painting."><img class="in" src="assets/i2i/edit_219_src.webp" width="512" height="512" loading="lazy" alt="Input: photo of a small airplane on a runway."><span class="cmp-line"></span><span class="cmp-knob"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6 3 12l6 6zM15 6v12l6-6z"/></svg></span><span class="cmp-tag l">Input</span><span class="cmp-tag r">Output</span><input type="range" min="0" max="100" value="50" aria-label="Compare input and output, watercolor style"></div>
+            <figcaption><strong>Watercolor</strong></figcaption>
+          </figure>
+        </div>
+        <details class="more">
+          <summary>Scores</summary>
+        <div class="tbl-wrap">
+          <table aria-describedby="tbl-note-2" class="tbl compact">
+            <thead><tr><th scope="col">Model</th><th scope="col">HED &#8593;</th><th scope="col">Depth &#8593;</th><th scope="col">Colorize &#8593;</th><th scope="col">Style PSNR &#8593;</th></tr></thead>
+            <tbody>
+              <tr class="is-ours"><td>Jeveration</td><td>0.880</td><td>0.802</td><td>0.937</td><td>15.40</td></tr>
+              <tr><td>Copy the input</td><td>0.828</td><td>0.713</td><td>0.998</td><td>&#8211;</td></tr>
+              <tr><td>Decoder without source</td><td>0.792</td><td>0.767</td><td>0.757</td><td>14.37</td></tr>
+            </tbody>
+          </table>
+        </div>
+<p class="tbl-note" id="tbl-note-2">Structure tasks also receive a caption, while style tasks use a fixed instruction for each style. Structure fidelity on 341 held-out examples per task (HED and colorization by edge F1, depth by &#948;<sub>1</sub>) and style PSNR against paired targets.</p>
+        </details>
+      </div>
+
+      <div class="sub" id="dense">
+        <h3>Dense prediction</h3>
+        <div class="prose">
+          <p>The same checkpoint predicts <strong>segmentation, depth and surface normals</strong> on NYUv2 in about 78 ms. It reaches <strong>67.7 mIoU</strong>, on par with dense-only models trained from the same backbone.</p>
+        </div>
+        <div class="dense">
+          <div class="dense-row">
+            <figure><img src="assets/dense/dense_a_img.jpg" width="384" height="288" loading="lazy" alt="NYUv2 test picture of a living room with a red sofa."><figcaption>Input</figcaption></figure>
+            <figure><img src="assets/dense/dense_a_seg.jpg" width="384" height="288" loading="lazy" alt="Predicted 13-class segmentation."><figcaption>Segmentation</figcaption></figure>
+            <figure><img src="assets/dense/dense_a_depth.jpg" width="384" height="288" loading="lazy" alt="Predicted depth, near is bright."><figcaption>Depth</figcaption></figure>
+            <figure><img src="assets/dense/dense_a_normal.jpg" width="384" height="288" loading="lazy" alt="Predicted surface normals."><figcaption>Normals</figcaption></figure>
+          </div>
+          <div class="dense-row">
+            <figure><img src="assets/dense/dense_d_img.jpg" width="384" height="288" loading="lazy" alt="NYUv2 test picture of a bedroom."><figcaption>Input</figcaption></figure>
+            <figure><img src="assets/dense/dense_d_seg.jpg" width="384" height="288" loading="lazy" alt="Predicted 13-class segmentation."><figcaption>Segmentation</figcaption></figure>
+            <figure><img src="assets/dense/dense_d_depth.jpg" width="384" height="288" loading="lazy" alt="Predicted depth, near is bright."><figcaption>Depth</figcaption></figure>
+            <figure><img src="assets/dense/dense_d_normal.jpg" width="384" height="288" loading="lazy" alt="Predicted surface normals."><figcaption>Normals</figcaption></figure>
+          </div>
+          <div class="dense-row">
+            <figure><img src="assets/dense/dense_c_img.jpg" width="384" height="288" loading="lazy" alt="NYUv2 test picture of a bedroom with framed pictures and a lamp."><figcaption>Input</figcaption></figure>
+            <figure><img src="assets/dense/dense_c_seg.jpg" width="384" height="288" loading="lazy" alt="Predicted 13-class segmentation."><figcaption>Segmentation</figcaption></figure>
+            <figure><img src="assets/dense/dense_c_depth.jpg" width="384" height="288" loading="lazy" alt="Predicted depth, near is bright."><figcaption>Depth</figcaption></figure>
+            <figure><img src="assets/dense/dense_c_normal.jpg" width="384" height="288" loading="lazy" alt="Predicted surface normals."><figcaption>Normals</figcaption></figure>
+          </div>
+        </div>
+        <details class="more">
+          <summary>Scores</summary>
+        <div class="tbl-wrap">
+          <table aria-describedby="tbl-note-3" class="tbl compact">
+            <thead><tr><th scope="col">Model</th><th scope="col">Seg. mIoU &#8593;</th><th scope="col">Depth abs. (m) &#8595;</th><th scope="col">Depth &#948;<sub>1</sub> &#8593;</th><th scope="col">Normal mean (&#176;) &#8595;</th></tr></thead>
+            <tbody>
+              <tr class="is-ours"><td>Jeveration</td><td>67.7</td><td>0.267</td><td>0.898</td><td>24.2</td></tr>
+              <tr><td>Dense-only, one task each</td><td>67.8</td><td>0.246</td><td>0.915</td><td>21.2</td></tr>
+              <tr><td>Dense-only, three tasks</td><td>67.3</td><td>0.253</td><td>0.912</td><td>23.0</td></tr>
+              <tr><td>DeepLabV3+ R50<sup>&#8225;</sup></td><td>53.5</td><td>0.393</td><td>&#8211;</td><td>22.0</td></tr>
+            </tbody>
+          </table>
+        </div>
+<p class="tbl-note" id="tbl-note-3">NYUv2, 654 test images. Dense-only models use the same backbone. &#8225; is a reported result.</p>
+        </details>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="part part-3" id="ablations" aria-labelledby="ablations-h">
+    <div class="wide">
+      <div class="part-head">
+        <span class="part-num" aria-hidden="true">3</span>
+        <div class="part-title">
+          <p class="part-label">Ablations</p>
+          <h2 id="ablations-h">The effect of each component</h2>
+        </div>
+      </div>
+      <div class="prose lead">
+        <p>The correction target brings a further gain in image quality, and the two branches of the image head together <strong>outperform either branch alone</strong>. Training on <strong>all tasks</strong> costs almost no text-to-image quality.</p>
+      </div>
+      <div class="abl">
+        <article>
+          <h4>Correction target</h4>
+          <p>Removing the correction target <strong>lowers HPSv2.1 at similar GenEval</strong>. This suggests that distribution matching sets the composition, while the correction refines details.</p>
+          <table class="tbl"><thead><tr><th scope="col">Variant</th><th scope="col">GenEval</th><th scope="col">HPSv2.1</th></tr></thead>
+            <tbody><tr class="is-ours"><td>With correction</td><td>0.74</td><td>28.03</td></tr><tr><td>Without correction</td><td>0.73</td><td>27.92</td></tr></tbody></table>
+        </article>
+        <article>
+          <h4>Image-head branches</h4>
+          <p>The image head predicts each code with two branches, one initialised from the tokenizer's codebook and a wider one that learns freely. <strong>Together they outperform either branch alone</strong>, measured on the first-phase model.</p>
+          <table class="tbl"><thead><tr><th scope="col">Variant</th><th scope="col">GenEval</th><th scope="col">HPSv2.1</th></tr></thead>
+            <tbody><tr class="is-ours"><td>Both branches</td><td>0.64</td><td>25.42</td></tr><tr><td>Wide branch only</td><td>0.60</td><td>25.34</td></tr><tr><td>Codebook branch only</td><td>0.59</td><td>25.04</td></tr></tbody></table>
+        </article>
+        <article>
+          <h4>Joint training across tasks</h4>
+          <p>Adding image-to-image and dense tasks <strong>costs little text-to-image quality</strong>, with DPG at 78.24 against 78.61. Both runs receive about the same number of text-to-image updates.</p>
+          <table class="tbl"><thead><tr><th scope="col">Training tasks</th><th scope="col">GenEval</th><th scope="col">HPSv2.1</th></tr></thead>
+            <tbody><tr class="is-ours"><td>All tasks</td><td>0.74</td><td>28.06</td></tr><tr><td>Text-to-image only</td><td>0.73</td><td>28.28</td></tr></tbody></table>
+        </article>
+      </div>
+      <p class="tbl-note">Each card changes one component. Numbers are comparable within a card, not across cards.</p>
+    </div>
+  </section>
+
+  <section class="band-end" id="bibtex" aria-labelledby="bibtex-h">
+    <div class="wide">
+      <h2 id="bibtex-h">BibTeX</h2>
+      <div class="bib">
+        <pre><code id="bib-text">@article{liu2026jeveration,
+  title   = {Jeveration: System One Models Now Generate},
+  author  = {Liu, Yuhe and Li, Qi and Zhang, Shihua and Wang, Xinchao},
+  journal = {arXiv preprint arXiv:2611.24738},
+  year    = {2026}
+}</code></pre>
+        <button type="button" class="btn" id="bib-copy">Copy</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wide">Jeveration project page</div>
+</footer>
+
+</div>
+
+<dialog class="lb" id="lightbox" aria-label="Sample at full size">
+  <div class="lb-card">
+    <img id="lb-img" src="assets/t2i/creature-06.webp" width="512" height="512" alt="">
+    <div class="lb-bar">
+      <p id="lb-text"></p>
+      <button type="button" class="btn" id="lb-prev" aria-label="Previous sample">&#8592;</button>
+      <button type="button" class="btn" id="lb-next" aria-label="Next sample">&#8594;</button>
+      <button type="button" class="btn" id="lb-close">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+(function () {
+  "use strict";
+  var reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+  /* Table 1 of the paper. Display strings are kept as printed there. */
+  var MODELS = [
+    { name: "PixArt-α", fam: "diff", group: "gen", params: "0.6", steps: "20", res: "512", speed: "25.1", ge: "0.49", dpg: "71.6", dpgN: "‡", hps: "29.98", ms: 378.8 },
+    { name: "PixArt-Σ", fam: "diff", group: "gen", params: "0.6", steps: "20", res: "512", speed: "22.7", ge: "0.54", dpg: "79.5", dpgN: "‡", hps: "30.49", ms: 419.5 },
+    { name: "SANA-0.6B", fam: "diff", group: "gen", params: "0.6", steps: "20", res: "512", speed: "16.2", ge: "0.65", dpg: "84.3", dpgN: "†", hps: "29.86", ms: 587.3 },
+    { name: "SANA-Sprint 0.6B", fam: "diff", group: "gen", params: "0.6", steps: "1", res: "1024", speed: "78.5", ge: "0.72", dpg: "78.63", hps: "28.74", ms: 121.2 },
+    { name: "SDXL-DMD2", fam: "diff", group: "gen", params: "2.6", steps: "1", res: "1024", speed: "46.6", ge: "0.56", dpg: "74.09", hps: "28.20", ms: 204.0 },
+    { name: "SDXL-LCM", fam: "diff", group: "gen", params: "2.6", steps: "4", res: "1024", speed: "28.2", ge: "0.53", geN: "‡", dpg: "71.08", hps: "26.99", ms: 336.7 },
+    { name: "FLUX.1-schnell", fam: "diff", group: "gen", params: "12.0", steps: "1", res: "1024", speed: "27.5", ge: "0.69", dpg: "85.97", hps: "29.63", ms: 345.6 },
+    { name: "Z-Image-Turbo", fam: "diff", group: "gen", params: "6.2", steps: "8", res: "1024", speed: "4.8", ge: "0.76", dpg: "84.99", hps: "29.76", ms: 1965.2 },
+    { name: "SD3-medium", fam: "diff", group: "gen", params: "2.0", steps: "28", res: "1024", speed: "4.6", ge: "0.62", geN: "‡", dpg: "84.1", dpgN: "‡", hps: "29.88", ms: 2086.0 },
+    { name: "JanusFlow-1.3B", fam: "diff", group: "uni", params: "1.3", steps: "30", res: "384", speed: "21.3", ge: "0.63", geN: "†", dpg: "80.09", dpgN: "†", hps: "22.90", ms: 445.8 },
+    { name: "Janus-Pro-1B", fam: "ar", group: "uni", params: "1.5", steps: "576", res: "384", speed: "1.3", ge: "0.73", dpg: "82.63", dpgN: "†", hps: "27.73", ms: 7593.2 },
+    { name: "Janus-Pro-7B", fam: "ar", group: "uni", params: "7.0", steps: "576", res: "384", speed: "1.0", ge: "0.80", dpg: "83.91", hps: "28.47", ms: 9508.4 },
+    { name: "Show-o Turbo-512", fam: "mask", group: "uni", params: "1.3", steps: "4", res: "512", speed: "101.0", ge: "0.63", dpg: "83.35", hps: "27.35", ms: 94.1 },
+    { name: "Show-o-512", fam: "mask", group: "uni", params: "1.3", steps: "50", res: "512", speed: "5.8", ge: "0.68", dpg: "67.27", dpgN: "‡", hps: "27.85", ms: 1631.0 },
+    { name: "MMaDA-8B", fam: "mask", group: "uni", params: "8.0", steps: "15", res: "512", speed: "2.5", ge: "0.63", geN: "†", dpg: "69.97", dpgN: "‡", hps: "23.74", ms: 3860.9 },
+    { name: "Jeveration", fam: "dec", group: "ours", params: "5.2", steps: "1", res: "512", speed: "122.2", ge: "0.74", dpg: "78.24", hps: "28.06", ms: 77.8 }
+  ];
+  var BY = {};
+  MODELS.forEach(function (m) { BY[m.name] = m; });
+  var GROUP_NAME = { ours: "Jeveration (ours)", uni: "Unified model", gen: "Generation-only model" };
+  var FAMILY = { diff: "Diffusion / flow", mask: "Masked tokens", ar: "Autoregressive", dec: "Typed decisions" };
+
+  function el(tag, attrs, text) {
+    var n = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function svg(tag, attrs) {
+    var n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+    return n;
+  }
+  function msText(ms) { return ms.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 }); }
+  function secText(ms) { return (ms < 100 ? (ms / 1000).toFixed(3) : (ms / 1000).toFixed(2)) + " s"; }
+  function stepText(m) { return m.steps + (m.steps === "1" ? " step" : " steps"); }
+
+  /* one tooltip per chart host; values lead, names follow */
+  function makeTip(host) {
+    var tip = el("div", { "class": "tip", role: "presentation" });
+    tip.hidden = true;
+    host.appendChild(tip);
+    return {
+      show: function (lines, x, y) {
+        tip.textContent = "";
+        tip.appendChild(el("strong", null, lines[0]));
+        for (var i = 1; i < lines.length; i++) tip.appendChild(el("span", null, lines[i]));
+        tip.hidden = false;
+        var hw = host.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
+        var left = Math.min(Math.max(0, x - tw / 2), Math.max(0, hw - tw));
+        var top = y - th - 12;
+        if (top < 0) top = y + 16;
+        tip.style.left = left + "px";
+        tip.style.top = top + "px";
+      },
+      hide: function () { tip.hidden = true; }
+    };
+  }
+
+  /* ---------- latency chart, the bars of Fig. 1 ---------- */
+  var RACE = ["Jeveration", "FLUX.1-schnell", "SD3-medium", "MMaDA-8B", "Janus-Pro-7B"];
+  var XMAX = 10000; /* ms, axis from 0 to 10 s */
+  var grid = document.getElementById("race-grid");
+  var rows = [];
+  RACE.forEach(function (name, i) {
+    var m = BY[name], ours = m.group === "ours";
+    var label = el("div", { "class": "r-label" + (ours ? " is-ours" : ""), style: "grid-row:" + (i + 1) }, name);
+    var track = el("div", {
+      "class": "r-track" + (ours ? " is-ours" : ""), style: "grid-row:" + (i + 1) + ";--f:" + (m.ms / XMAX),
+      tabindex: "0", role: "img",
+      "aria-label": name + ", " + secText(m.ms) + " per image, " + stepText(m) + " at " + m.res + " px"
+    });
+    track.appendChild(el("span", { "class": "r-bar" }));
+    track.appendChild(el("span", { "class": "r-val" }, secText(m.ms)));
+    grid.appendChild(label);
+    grid.appendChild(track);
+    rows.push({ m: m, track: track });
+  });
+  var gl = el("div", { "class": "r-gridlines", "aria-hidden": "true" });
+  [0, 2, 4, 6, 8, 10].forEach(function (s) { var g = el("i"); g.style.setProperty("--k", s / 10); gl.appendChild(g); });
+  grid.appendChild(gl);
+  var axis = el("div", { "class": "r-axis", "aria-hidden": "true" });
+  [0, 2, 4, 6, 8, 10].forEach(function (s) { var t = el("span", null, s === 10 ? "10 s" : String(s)); t.style.setProperty("--k", s / 10); axis.appendChild(t); });
+  grid.appendChild(axis);
+  var anno = el("div", { "class": "r-anno", "aria-hidden": "true" });
+  anno.appendChild(el("span", { "class": "vline" }));
+  var arrow = el("span", { "class": "arrow" });
+  arrow.appendChild(el("b", null, "122× faster"));
+  anno.appendChild(arrow);
+  grid.appendChild(anno);
+
+  var raceTip = makeTip(grid);
+  rows.forEach(function (r) {
+    var lines = [secText(r.m.ms) + " per image", r.m.name, stepText(r.m) + " at " + r.m.res + " px"];
+    function at(ev) {
+      var gb = grid.getBoundingClientRect(), tb = r.track.getBoundingClientRect();
+      var x = ev && ev.clientX != null ? ev.clientX - gb.left : tb.left - gb.left + 40;
+      raceTip.show(lines, x, tb.top - gb.top + 8);
+    }
+    r.track.addEventListener("pointermove", at);
+    r.track.addEventListener("pointerleave", raceTip.hide);
+    r.track.addEventListener("focus", function () { at(null); });
+    r.track.addEventListener("blur", raceTip.hide);
+  });
+
+  var btn = document.getElementById("race-replay");
+  var clock = document.getElementById("race-clock");
+  var status = document.getElementById("race-status");
+  var raf = 0;
+  btn.addEventListener("click", function () {
+    cancelAnimationFrame(raf);
+    var total = Math.max.apply(null, rows.map(function (r) { return r.m.ms; }));
+    grid.classList.add("is-running");
+    btn.disabled = true;
+    rows.forEach(function (r) { r.track.classList.remove("is-done"); r.track.style.setProperty("--f", 0); });
+    var t0 = performance.now();
+    function frame(now) {
+      var t = now - t0;
+      rows.forEach(function (r) {
+        r.track.style.setProperty("--f", Math.min(t, r.m.ms) / XMAX);
+        if (t >= r.m.ms) r.track.classList.add("is-done");
+      });
+      clock.textContent = (Math.min(t, total) / 1000).toFixed(2) + " s";
+      if (t < total) { raf = requestAnimationFrame(frame); return; }
+      grid.classList.remove("is-running");
+      btn.disabled = false;
+      status.textContent = "Replay finished. Jeveration took 0.078 s and Janus-Pro-7B 9.51 s.";
+    }
+    raf = requestAnimationFrame(frame);
+  });
+
+  /* ---------- Table 1 ---------- */
+  var tbody = document.getElementById("main-tbody");
+  [["gen", "Generation-only models"], ["uni", "Unified models"], ["ours", "Ours"]].forEach(function (g) {
+    var gr = el("tr", { "class": "grp" });
+    gr.appendChild(el("td", { colspan: "11" }, g[1]));
+    tbody.appendChild(gr);
+    MODELS.filter(function (m) { return m.group === g[0]; }).forEach(function (m) {
+      var tr = el("tr", m.group === "ours" ? { "class": "is-ours" } : null);
+      function td(text, note) {
+        var c = el("td", null, text);
+        if (note) c.appendChild(el("sup", null, note));
+        tr.appendChild(c);
+        return c;
+      }
+      td(m.name);
+      var fc = el("td", { "class": "fam" });
+      fc.appendChild(el("i", { "class": "fam-" + m.fam, "aria-hidden": "true" }));
+      fc.appendChild(document.createTextNode(FAMILY[m.fam]));
+      tr.appendChild(fc);
+      td(m.group === "gen" ? "×" : "✓"); td(m.params); td(m.steps); td(m.res);
+      var speed = td(m.speed + "×");
+      if (m.group === "ours") speed.className = "key";       /* the headline number of the table */
+      td(m.ge, m.geN); td(m.dpg, m.dpgN); td(m.hps); td(msText(m.ms));
+      tbody.appendChild(tr);
+    });
+  });
+
+  /* ---------- GenEval against latency ---------- */
+  var host = document.getElementById("scatter");
+  /* p: order in which names get their place (and how narrow the chart may be: 0-1 always, 2 from 480 px, 3 from 720 px);
+     pos: the place that is tried first */
+  var LABELS = {
+    "Jeveration": { p: 0, pos: "above" },
+    "Janus-Pro-7B": { p: 1, pos: "left" },
+    "Show-o Turbo-512": { p: 1, pos: "below" },
+    "SANA-Sprint 0.6B": { p: 2, pos: "right" },
+    "FLUX.1-schnell": { p: 2, pos: "right" },
+    "Z-Image-Turbo": { p: 3, pos: "left" },
+    "Janus-Pro-1B": { p: 3, pos: "left" },
+    "MMaDA-8B": { p: 3, pos: "right" },
+    "Show-o-512": { p: 3, pos: "left" },
+    "SD3-medium": { p: 3, pos: "right" },
+    "SANA-0.6B": { p: 3, pos: "right" },
+    "JanusFlow-1.3B": { p: 3, pos: "left" },
+    "SDXL-DMD2": { p: 3, pos: "left" },
+    "PixArt-Σ": { p: 3, pos: "right" },
+    "SDXL-LCM": { p: 3, pos: "left" },
+    "PixArt-α": { p: 3, pos: "right" }
+  };
+  /* Names are placed one by one. A name goes to the first of eight places around its marker where it stays inside the
+     plot and covers no marker and no name placed before it; with no free place it is left to the tooltip.
+     items: { cx, cy, w, h, pos }, w = 0 for a marker without a name; area: [left, top, right, bottom]. */
+  function layoutNames(items, area) {
+    var taken = items.map(function (it) { return [it.cx - 9, it.cy - 9, it.cx + 9, it.cy + 9]; });
+    return items.map(function (it) {
+      if (!it.w) return null;
+      var w = it.w, h = it.h, cx = it.cx, cy = it.cy;
+      var C = {
+        right: [cx + 11, cy - h / 2], left: [cx - 11 - w, cy - h / 2],
+        above: [cx - w / 2, cy - 11 - h], below: [cx - w / 2, cy + 11],
+        "above-right": [cx + 4, cy - 10 - h], "below-right": [cx + 4, cy + 10],
+        "above-left": [cx - 4 - w, cy - 10 - h], "below-left": [cx - 4 - w, cy + 10]
+      };
+      var tries = [it.pos].concat(Object.keys(C).filter(function (k) { return k !== it.pos; }));
+      for (var i = 0; i < tries.length; i++) {
+        var c = C[tries[i]], b = [c[0], c[1], c[0] + w, c[1] + h];
+        if (b[0] < area[0] || b[1] < area[1] || b[2] > area[2] || b[3] > area[3]) continue;
+        if (taken.some(function (o) { return b[0] < o[2] + 2 && b[2] > o[0] - 2 && b[1] < o[3] + 1 && b[3] > o[1] - 1; })) continue;
+        taken.push(b);
+        return { x: c[0], y: c[1] + h - 3.5, place: tries[i] };
+      }
+      return null;
+    });
+  }
+  var scTip = makeTip(host);
+  var lastW = 0;
+  function drawScatter() {
+    var W = host.clientWidth;
+    if (!W || W === lastW) return;
+    lastW = W;
+    var oldSvg = host.querySelector("svg");
+    if (oldSvg) host.removeChild(oldSvg);
+    var H = Math.round(Math.min(400, Math.max(280, W * 0.5)));
+    var mg = { l: 40, r: 14, t: 26, b: 42 };
+    var lx0 = Math.log10(50), lx1 = Math.log10(15000), y0 = 0.45, y1 = 0.85;
+    function X(ms) { return mg.l + (Math.log10(ms) - lx0) / (lx1 - lx0) * (W - mg.l - mg.r); }
+    function Y(g) { return mg.t + (y1 - g) / (y1 - y0) * (H - mg.t - mg.b); }
+    var s = svg("svg", { viewBox: "0 0 " + W + " " + H, width: W, height: H, role: "group", "aria-label": "GenEval against latency per image for 16 models" });
+
+    [0.5, 0.6, 0.7, 0.8].forEach(function (g) {
+      s.appendChild(svg("line", { x1: mg.l, x2: W - mg.r, y1: Y(g), y2: Y(g), "class": "sc-grid" }));
+      var t = svg("text", { x: mg.l - 8, y: Y(g) + 4, "text-anchor": "end", "class": "sc-tick" });
+      t.textContent = g.toFixed(1);
+      s.appendChild(t);
+    });
+    [100, 1000, 10000].forEach(function (ms) {
+      s.appendChild(svg("line", { x1: X(ms), x2: X(ms), y1: mg.t, y2: H - mg.b, "class": "sc-grid" }));
+      var t = svg("text", { x: X(ms), y: H - mg.b + 18, "text-anchor": "middle", "class": "sc-tick" });
+      t.textContent = ms.toLocaleString("en-US");
+      s.appendChild(t);
+    });
+    s.appendChild(svg("line", { x1: mg.l, x2: W - mg.r, y1: H - mg.b, y2: H - mg.b, "class": "sc-axis" }));
+    var xt = svg("text", { x: W - mg.r, y: H - 6, "text-anchor": "end", "class": "sc-title" });
+    xt.textContent = "Latency per image (ms, log scale)";
+    s.appendChild(xt);
+    var yt = svg("text", { x: 0, y: 12, "class": "sc-title" });
+    yt.textContent = "GenEval ↑";
+    s.appendChild(yt);
+
+    var level = W >= 720 ? 3 : (W >= 480 ? 2 : 1);
+    var order = MODELS.filter(function (m) { return m.group !== "ours"; }).concat([BY.Jeveration]);
+    order.forEach(function (m) {
+      var cx = X(m.ms), cy = Y(parseFloat(m.ge)), mark;
+      if (m.group === "ours") mark = svg("circle", { cx: cx, cy: cy, r: 7.5, "class": "m-ours" });
+      else if (m.group === "uni") mark = svg("path", { d: "M" + cx + " " + (cy - 7) + "L" + (cx + 7) + " " + cy + "L" + cx + " " + (cy + 7) + "L" + (cx - 7) + " " + cy + "Z", "class": "m-other" });
+      else mark = svg("rect", { x: cx - 5.5, y: cy - 5.5, width: 11, height: 11, rx: 1.5, "class": "m-other" });
+      s.appendChild(mark);
+    });
+    host.insertBefore(s, host.firstChild);        /* in the page before the names are added: their widths are measured */
+    var named = order.slice().sort(function (x, y) { return LABELS[x.name].p - LABELS[y.name].p; });
+    var texts = named.map(function (m) {
+      if (LABELS[m.name].p > level) return null;
+      var t = svg("text", { "class": "sc-label" + (m.group === "ours" ? " is-ours" : "") });
+      t.textContent = m.group === "ours" ? "Jeveration, 78 ms" : m.name;
+      s.appendChild(t);
+      return t;
+    });
+    var spots = layoutNames(named.map(function (m, i) {
+      var t = texts[i], w = 0;
+      if (t) {
+        try { w = t.getComputedTextLength(); } catch (err) { w = 0; }
+        w = w || t.textContent.length * 6.8;       /* not rendered yet: an estimate */
+      }
+      return { cx: X(m.ms), cy: Y(parseFloat(m.ge)), w: w, h: m.group === "ours" ? 15 : 14, pos: LABELS[m.name].pos };
+    }), [mg.l + 3, mg.t - 12, W - 2, H - mg.b - 3]);
+    spots.forEach(function (spot, i) {
+      if (!texts[i]) return;
+      if (!spot) { s.removeChild(texts[i]); return; }
+      texts[i].setAttribute("x", spot.x.toFixed(1));
+      texts[i].setAttribute("y", spot.y.toFixed(1));
+    });
+    order.forEach(function (m) {
+      var cx = X(m.ms), cy = Y(parseFloat(m.ge));
+      var hit = svg("circle", { cx: cx, cy: cy, r: 13, "class": "sc-hit", tabindex: "0",
+        "aria-label": m.name + ", GenEval " + m.ge + ", " + msText(m.ms) + " ms" });
+      var lines = ["GenEval " + m.ge + " · " + msText(m.ms) + " ms", m.name + ", " + GROUP_NAME[m.group].toLowerCase().replace("jeveration (ours)", "ours"), stepText(m) + " at " + m.res + " px"];
+      function show() { scTip.show(lines, cx, cy); }
+      hit.addEventListener("pointerenter", show);
+      hit.addEventListener("focus", show);
+      hit.addEventListener("pointerleave", scTip.hide);
+      hit.addEventListener("blur", scTip.hide);
+      s.appendChild(hit);
+    });
+  }
+  drawScatter();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { lastW = 0; drawScatter(); });   /* widths change with the web font */
+  if ("ResizeObserver" in window) new ResizeObserver(function () { drawScatter(); }).observe(host);
+  else window.addEventListener("resize", drawScatter);
+
+  /* ---------- image-to-image sliders ---------- */
+  /* While nobody touches a picture its divider sweeps from side to side; a pointer or the keyboard takes it over.
+     The range input carries keyboard and screen-reader control; pointers drag on the picture itself. */
+  var SWEEP = { mid: 50, amp: 34, period: 9000, ease: 700 };   /* per cent of the width; ms per sweep; ms to rejoin it */
+  var stages = [];
+  var sweepRaf = 0;
+  function sweep(now) {
+    sweepRaf = 0;
+    var alive = false;
+    stages.forEach(function (st) {
+      if (!st.visible || st.hover || st.dragging || st.focus) return;
+      alive = true;
+      if (now < st.resumeAt) return;
+      if (st.rejoin) { st.from = st.pos; st.t0 = now; st.rejoin = false; }
+      var p = SWEEP.mid + SWEEP.amp * Math.sin(2 * Math.PI * now / SWEEP.period + st.phase);
+      var k = Math.min(1, (now - st.t0) / SWEEP.ease);
+      if (k < 1) p = st.from + (p - st.from) * k * k * (3 - 2 * k);
+      st.show(p);
+    });
+    if (alive) sweepRaf = requestAnimationFrame(sweep);
+  }
+  function wake(st) {
+    st.rejoin = true;
+    if (!reduceMotion && !sweepRaf) sweepRaf = requestAnimationFrame(sweep);
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".cmp-stage"), function (stage, i) {
+    var input = stage.querySelector("input");
+    var st = { pos: 50, phase: i * 0.9, visible: true, hover: false, dragging: false, focus: false, resumeAt: 0, rejoin: true, from: 50, t0: 0 };
+    st.show = function (p) { st.pos = p; stage.style.setProperty("--pos", p.toFixed(2) + "%"); };
+    function moveTo(e) {
+      var r = stage.getBoundingClientRect();
+      var p = Math.round(Math.max(0, Math.min(100, (e.clientX - r.left) / r.width * 100)));
+      input.value = p;
+      st.show(p);
+    }
+    function drop(e) {
+      st.dragging = false;
+      if (e.pointerType !== "mouse") st.resumeAt = performance.now() + 2500;   /* a finger has no "leave": wait a moment */
+      wake(st);
+    }
+    input.addEventListener("input", function () { st.show(+input.value); });
+    input.addEventListener("focus", function () { st.focus = true; input.value = Math.round(st.pos); });
+    input.addEventListener("blur", function () { st.focus = false; wake(st); });
+    stage.addEventListener("pointerenter", function (e) { if (e.pointerType === "mouse") st.hover = true; });
+    stage.addEventListener("pointerleave", function (e) { if (e.pointerType === "mouse") { st.hover = false; wake(st); } });
+    stage.addEventListener("pointerdown", function (e) {
+      st.dragging = true;
+      try { stage.setPointerCapture(e.pointerId); } catch (err) { /* capture is optional */ }
+      moveTo(e);
+    });
+    stage.addEventListener("pointermove", function (e) { if (st.dragging || e.pointerType === "mouse") moveTo(e); });
+    stage.addEventListener("pointerup", drop);
+    stage.addEventListener("pointercancel", drop);
+    st.show(50);
+    stages.push(st);
+    if ("IntersectionObserver" in window) {
+      st.visible = false;
+      new IntersectionObserver(function (entries) {
+        st.visible = entries[entries.length - 1].isIntersecting;
+        if (st.visible) wake(st);
+      }, { threshold: 0.15 }).observe(stage);
+    } else wake(st);
+  });
+
+  /* ---------- bar at the top: the marker follows the chapter in view ---------- */
+  var nav = document.getElementById("topnav");
+  var seg = document.getElementById("seg");
+  var segLinks = Array.prototype.slice.call(seg.querySelectorAll("a"));
+  var chapters = segLinks.map(function (a) { return document.getElementById(a.getAttribute("href").slice(1)); });
+  var wordmark = document.querySelector(".wordmark");
+  var current = -2;
+  function placeThumb() {
+    var a = segLinks[current];
+    if (!a) return;
+    seg.style.setProperty("--x", a.offsetLeft + "px");
+    seg.style.setProperty("--w", a.offsetWidth + "px");
+  }
+  function spy() {
+    var line = nav.getBoundingClientRect().bottom + 28;
+    var idx = -1;
+    chapters.forEach(function (c, i) {
+      var r = c.getBoundingClientRect();
+      if (r.top <= line && r.bottom > line) idx = i;
+    });
+    nav.classList.toggle("at-top", wordmark.getBoundingClientRect().bottom > line - 28);
+    if (idx === current) return;
+    current = idx;
+    segLinks.forEach(function (a, i) {
+      if (i === idx) a.setAttribute("aria-current", "true"); else a.removeAttribute("aria-current");
+    });
+    seg.classList.toggle("has-active", idx >= 0);
+    if (idx < 0) return;
+    seg.style.setProperty("--thumb", "var(--c" + (idx + 1) + "-soft)");
+    placeThumb();
+    if (seg.scrollWidth > seg.clientWidth) {      /* on a narrow phone the control scrolls sideways: keep the marker in view */
+      seg.scrollLeft = segLinks[idx].offsetLeft - (seg.clientWidth - segLinks[idx].offsetWidth) / 2;
+    }
+  }
+  var spyQueued = false;
+  function queueSpy() {
+    if (spyQueued) return;
+    spyQueued = true;
+    requestAnimationFrame(function () { spyQueued = false; spy(); });
+  }
+  window.addEventListener("scroll", queueSpy, { passive: true });
+  window.addEventListener("resize", function () { placeThumb(); queueSpy(); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(placeThumb);
+  segLinks.forEach(function (a, i) {
+    a.addEventListener("click", function (e) {
+      e.preventDefault();
+      chapters[i].scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    });
+  });
+  nav.querySelector(".brand").addEventListener("click", function (e) {
+    e.preventDefault();
+    window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+  });
+  spy();
+
+  /* ---------- lightbox ---------- */
+  var dlg = document.getElementById("lightbox");
+  var tiles = Array.prototype.slice.call(document.querySelectorAll("#gallery .tile"));
+  var lbImg = document.getElementById("lb-img"), lbText = document.getElementById("lb-text");
+  var cur = 0;
+  function openAt(i) {
+    cur = (i + tiles.length) % tiles.length;
+    var img = tiles[cur].querySelector("img");
+    lbImg.src = img.getAttribute("src");
+    lbImg.alt = img.alt;
+    lbText.textContent = img.alt;
+    if (!dlg.open) {
+      if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
+    }
+  }
+  function closeLb() { if (typeof dlg.close === "function") dlg.close(); else dlg.removeAttribute("open"); }
+  tiles.forEach(function (t, i) { t.addEventListener("click", function () { openAt(i); }); });
+  document.getElementById("lb-prev").addEventListener("click", function () { openAt(cur - 1); });
+  document.getElementById("lb-next").addEventListener("click", function () { openAt(cur + 1); });
+  document.getElementById("lb-close").addEventListener("click", closeLb);
+  dlg.addEventListener("click", function (e) { if (e.target === dlg) closeLb(); });
+  dlg.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowLeft") openAt(cur - 1);
+    if (e.key === "ArrowRight") openAt(cur + 1);
+  });
+  dlg.addEventListener("close", function () { if (tiles[cur]) tiles[cur].focus(); });
+
+  /* ---------- BibTeX copy ---------- */
+  var copyBtn = document.getElementById("bib-copy");
+  copyBtn.addEventListener("click", function () {
+    var text = document.getElementById("bib-text").textContent;
+    function selectIt() {
+      var r = document.createRange();
+      r.selectNodeContents(document.getElementById("bib-text"));
+      var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      copyBtn.textContent = "Selected, press Ctrl+C";
+    }
+    try {
+      navigator.clipboard.writeText(text).then(function () { copyBtn.textContent = "Copied"; }, selectIt);
+    } catch (e) { selectIt(); }
+    setTimeout(function () { copyBtn.textContent = "Copy"; }, 2400);
+  });
+})();
+</script>
+</body>
+</html>
