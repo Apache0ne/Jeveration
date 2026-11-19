@@ -134,7 +134,8 @@ def build(pipe):
                 return fn(pipe, *args)
             except ValueError as e:
                 raise gr.Error(str(e))
-        return spaces.GPU(duration=120)(run) if spaces else run
+        # ZeroGPU takes the reserved seconds from what the visitor's quota must still cover; a request needs 1 to 7 s
+        return spaces.GPU(duration=30)(run) if spaces else run
 
     with gr.Blocks(title="Jeveration") as demo:
         gr.Markdown("# Jeveration\nA frozen vision-language model returns a whole 512 x 512 image as one decision, in a "
