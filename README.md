@@ -42,15 +42,16 @@ python generate.py --weights weights/jeveration.pt --decoder weights/decoder512.
 
 ```bash
 python image_to_image.py --weights weights/jeveration.pt --source-decoder weights/source_decoder512.pt \
-    --task hed --image edges.png --caption "a red vintage car parked on a cobblestone street" --out car.png
+    --task hed --image examples/hed_puppy.png --out puppy.png \
+    --caption "A fluffy white Samoyed puppy smiling in a field of yellow flowers on a sunny afternoon."
 python image_to_image.py --weights weights/jeveration.pt --source-decoder weights/source_decoder512.pt \
-    --task watercolor --image photo.jpg --out watercolor.png
+    --task watercolor --image examples/photo_snowcabin.jpg --out watercolor.png
 ```
 
 **Dense prediction** (trained on NYUv2: indoor scenes)
 
 ```bash
-python dense_predict.py --weights weights/jeveration.pt --image room.jpg --out room_dense/
+python dense_predict.py --weights weights/jeveration.pt --image examples/room_1.png --out room_dense/
 ```
 
 **Python**, all tasks from one pipeline (run from the repository's folder, the inputs are in `examples/`)
@@ -94,7 +95,8 @@ pred = pipe.dense_predict(room[None])        # {"seg": [B, H, W], "depth": [B, H
 `pip install gradio -c requirements.txt`, which keeps the pinned versions.
 
 ```bash
-python app.py              # add --share for a temporary public link
+python app.py --weights weights/jeveration.pt --decoder weights/decoder512.pt \
+    --source-decoder weights/source_decoder512.pt        # add --share for a temporary public link
 ```
 
 Every script lists its options with `--help`. A seed gives the same image in every run on the same hardware and
