@@ -171,14 +171,18 @@ def scene_disjoint_split(pairs,val_images=20,seed=42):
     random.Random(seed).shuffle(scenes)
     groups={scene:sorted((x for x in pairs if x["scene"]==scene),
                          key=lambda x:x["frame"]) for scene in scenes}
-    val_scenes=[];n=0
+    # Hold out at least four entire scenes: ~40 candidate frames gives a
+    # buffer for decoder-alignment rejection while keeping train/val disjoint.
+    val_scenes=[]
+    n=0
     for scene in scenes:
         val_scenes.append(scene);n+=len(groups[scene])
-        if n>=val_images:break
+        if n>=2*val_images and len(val_scenes)>=4:break
     if len(val_scenes)==len(scenes):
         raise RuntimeError("Need at least one distinct training scene")
-    validation=[x for sc in val_scenes for x in groups[sc]][:val_images]
+    validation=[x for sc in val_scenes for x in groups[sc]]
     training=[x for sc in scenes if sc not in val_scenes for x in groups[sc]]
-    if len(validation)!=val_images or not training:raise RuntimeError("Insufficient scene-disjoint pairs")
+    if len(validation)<val_images or not training:
+        raise RuntimeError("Insufficient scene-disjoint pairs")
     assert not {x["scene"] for x in training}&{x["scene"] for x in validation}
     return training,validation,val_scenes
