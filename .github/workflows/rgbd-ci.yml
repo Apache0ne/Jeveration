@@ -1,0 +1,36 @@
+name: RGBD syntax and package smoke
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check Python syntax
+        run: python -m compileall -q jeveration tests
+      - name: Build installable wheel without downloading model dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel build
+          python -m build --wheel --no-isolation
+      - name: Verify packaged decoder sources and training CLI
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          wheels=glob.glob("dist/*.whl")
+          assert len(wheels)==1, wheels
+          with zipfile.ZipFile(wheels[0]) as z:
+              entries=set(z.namelist())
+              for path in (
+                  "jeveration/rgbd_train.py",
+                  "jeveration/rgbd_sidecar.py",
+                  "jeveration/rgbd_pipeline.py",
+                  "jeveration/third_party/tatitok/modeling/modules/blocks.py",
+              ):
+                  assert path in entries, f"Wheel missing {path}"
+          print("Wheel source inventory verified")
+          PY
