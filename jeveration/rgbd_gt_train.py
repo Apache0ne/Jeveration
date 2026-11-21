@@ -327,9 +327,12 @@ def report(a):
         cos=np.sum(pred_n*gt_n,axis=-1).clip(-1,1)
         angle=float(np.mean(np.degrees(np.arccos(cos[normal_mask]))))
         rgb=(b["rgb"].permute(1,2,0).numpy()*255).clip(0,255).astype("uint8")
+        sem=b["seg"].numpy()
+        gt_seg_image=seg_view(sem.clip(0,12)).copy()
+        gt_seg_image[~b["seg_valid"].numpy().astype(bool)]=0
         images=[rgb,depth_view(gt_z),depth_view(pred_z),
                 normal_view(gt_n),normal_view(pred_n),
-                seg_view(b["seg"].numpy().clip(0,12)),seg_view(npy(pred["seg"][0]).astype("int"))]
+                gt_seg_image,seg_view(npy(pred["seg"][0]).astype("int"))]
         sheet=Image.new("RGB",(512*len(images),512))
         for j,img in enumerate(images):sheet.paste(Image.fromarray(img),(512*j,0))
         sheet.resize((512*len(images)//2,256)).save(export/f"sample_{i:02d}.jpg",quality=84)
