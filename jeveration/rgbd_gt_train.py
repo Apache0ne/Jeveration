@@ -74,11 +74,12 @@ def prepare(a):
     download_paired_files(train+val,root/"downloads",a.dataset)
     checkpoints=root/"cache"
     for split in ("train","val"):(checkpoints/split).mkdir(parents=True,exist_ok=True)
-    old_train=list((checkpoints/"train").glob("*.npz"))
-    old_val=list((checkpoints/"val").glob("*.npz"))
-    if len(old_train)==len(train) and len(old_val)==len(val):
-        print("All paired samples already cached; reuse without tokenizer download",flush=True)
-        return
+    prepared=root/"cache_complete.json"
+    if prepared.is_file():
+        cached=json.loads(prepared.read_text(encoding="utf8"))
+        if cached.get("validation_count")==20 and cached.get("training_count",0)>=40:
+            print("Reusing completed ground-truth cache.",flush=True)
+            return
     from .rgbd_train import download_weights
     _,decoder=download_weights(a.weights_dir,a.model)
     codec=ImageCodec().to(a.device)
@@ -91,11 +92,14 @@ def prepare(a):
     for split,entries in (("train",train),("val",val)):
         accepted=0
         for entry in tqdm(entries,desc=f"GT decoder cache {split}"):
+            if split=="val" and accepted>=20: break
             ident=f"{entry['scene']}_{entry['frame']}"
             path=checkpoints/split/f"{ident}.npz"
+            reject=path.with_suffix(".rejected.json")
             if path.exists():
-                with np.load(path) as z:accepted+=int(z["alignment_ssim"]>=a.min_ssim)
+                accepted+=1
                 continue
+            if reject.exists():continue
             raw=load_hypersim_pair(entry,root/"downloads")
             prompt="A realistic indoor photograph of a furnished room."
             feat,rgb,alignment=_row_to_cache(raw,codec,encoder,a.device,prompt)
@@ -104,11 +108,13 @@ def prepare(a):
             if alignment["ssim"]<a.min_ssim:
                 print(f"SKIP {ident}: decoder reconstruction SSIM {alignment['ssim']:.3f}"
                       f" below threshold {a.min_ssim}",flush=True)
+                _atomic_json(reject,dict(reason="decoder_alignment",**alignment))
                 continue
             valid=raw["depth_valid"].mean()
             valid_n=raw["normal_valid"].mean()
             if valid<0.5 or valid_n<0.4:
                 print(f"SKIP {ident}: insufficient true geometric coverage d={valid:.3f}, n={valid_n:.3f}")
+                _atomic_json(reject,dict(reason="ground_truth_coverage",depth_valid=float(valid),normal_valid=float(valid_n)))
                 continue
             payload=dict(features=feat,rgb=rgb,
                 original_rgb=raw["rgb"],
@@ -135,6 +141,8 @@ def prepare(a):
                            "Decoder alignment insufficient. Do not train until resolved.")
     if train_count<40:
         raise RuntimeError(f"Only {train_count} aligned training frames; need >=40 for pilot.")
+    _atomic_json(prepared,dict(training_count=train_count,validation_count=val_count,
+                               dataset=a.dataset,min_ssim=a.min_ssim))
 
 
 class GTCache(Dataset):
