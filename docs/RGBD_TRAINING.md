@@ -24,9 +24,12 @@ Select an **A100 80 GB** runtime when available. An **L4** may work if the
 full model fits during cache preparation; memory has **not** been benchmarked.
 Use BF16-capable CUDA GPUs.
 
-### Cell 1 — install and preflight
+### Cell 1 — mount Drive, install and preflight
 
 ```python
+from google.colab import drive
+drive.mount("/content/drive")  # once per runtime; do not force remount
+SAVE_DIR = "/content/drive/MyDrive/Jeveration_RGBD/checkpoints"
 !pip -q install "git+https://github.com/Apache0ne/Jeveration.git"
 import torch
 print("torch:", torch.__version__, "cuda:", torch.version.cuda)
@@ -68,7 +71,11 @@ with the tradeoff of slower I/O.
     --warmup-steps 200 \
     --seg-weight 0.3 \
     --eval-every 200 \
-    --save-every 200
+    --save-dir "{SAVE_DIR}" \
+    --save-every 250 \
+    --save-at 1100,2250,3750 \
+    --log-every 10 \
+    --keep-last 0
 ```
 
 - BF16 autocast on CUDA; FP32 AdamW optimizer state.
@@ -84,8 +91,23 @@ with the tradeoff of slower I/O.
   no overlap with training prompts. No augmentation is applied to validation.
 - Horizontal flipping is enabled for training, with correct reversal of
   camera-frame normal-x. Validate with teacher agreement metrics.
-- Checkpoints: `checkpoints/rgbd_best.pt`, `rgbd_last.pt`, `trainer_last.pt`;
-  per-evaluation results in `validation.jsonl`.
+- **Live progress bar** updates every optimizer step with total, depth,
+  normals, segmentation and learning rate. GPU allocation and gradient norm
+  are also captured in the training metrics log.
+- **Google Drive checkpoints:** `SAVE_DIR/rgbd_step_000250.pt` is a
+  model-only checkpoint; `SAVE_DIR/trainer_step_000250.pt` contains the
+  model and optimizer for resume. Every selected save step writes BOTH.
+- `--save-every N` chooses regular intervals; `--save-at 1100,2250,3750`
+  selects extra exact steps (the final step is always saved).
+  `--save-every 0` disables regular intervals. Set `--keep-last 0` to
+  retain **every** numbered checkpoint, or e.g. `--keep-last 4` to prune
+  older periodic pairs.
+- `latest.json` points to the last completed optimizer checkpoint. The
+  improved `rgbd_best.pt` is updated independently whenever validation improves.
+- `training_metrics.jsonl` updates every `--log-every N` steps;
+  `validation.jsonl` updates every validation; `events.jsonl` tracks
+  best-checkpoint and save events; TensorBoard logs are in `tensorboard/`.
+  All are written inside the selected Drive checkpoint folder.
 
 The values are a **quality-oriented starting configuration**, not
 empirically proven optimal. Compare validation loss and geometry metrics;
@@ -97,14 +119,33 @@ If you get CUDA OOM **during training**, retry with
 OOM during the full model's cache preparation needs more VRAM/offloading;
 reducing the student batch does not fix that stage.
 
-To resume: repeat the fit command above with `--resume`.
-Resume expects the same number of target steps and decoder width.
+**To resume after an interruption:** remount the same Drive and ensure that
+the `--root` cache still exists. Repeat Cell 3 with `--resume`; the trainer
+loads the model + AdamW state from the Drive `latest.json` pointer.
+To resume a particular snapshot, add
+`--resume-from "{SAVE_DIR}/trainer_step_001000.pt"`.
+Resume requires the same total number of steps and decoder width.
+
+**Important:** `/content/jev_rgbd` is temporary Colab storage. Only the
+checkpoints/logs are persisted by `--save-dir`; after a runtime reset the
+original feature cache must be re-created by Cell 2. To persist the cached
+examples too, use a Drive path for `--root` in both Cell 2 and Cell 3
+(slower random reads) or explicitly back up the cache separately.
+
+**Live TensorBoard:** After Cell 1 and before starting Cell 3, run:
+```python
+%load_ext tensorboard
+%tensorboard --logdir /content/drive/MyDrive/Jeveration_RGBD/checkpoints/tensorboard
+```
+The progress bar works without TensorBoard. Use `--no-tensorboard` to disable
+event writes or `--no-progress` to replace the bar with periodic text updates.
 
 ## Generate a native RGB + geometry sample
 
 ```python
 !python -m jeveration.rgbd_train infer \
     --root /content/jev_rgbd \
+    --save-dir "{SAVE_DIR}" \
     --weights-dir /content/weights \
     --prompt "A red sports car on a clean street, photorealistic" \
     --output /content/rgbd_preview \
@@ -121,7 +162,7 @@ Alternatively, in Python:
 from jeveration.rgbd_pipeline import JeverationRGBDPipeline
 p=JeverationRGBDPipeline("/content/weights/jeveration.pt",
     decoder="/content/weights/decoder512.pt").load_rgbd_head(
-    "/content/jev_rgbd/checkpoints/rgbd_best.pt")
+    "/content/drive/MyDrive/Jeveration_RGBD/checkpoints/rgbd_best.pt")
 rgbd=p.text_to_rgbd(["A tiny lighthouse on a rocky coast"],p.generator(123))
 ```
 
