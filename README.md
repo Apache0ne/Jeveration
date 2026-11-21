@@ -9,7 +9,30 @@ Jeveration is a frozen vision-language model that returns a whole 512 x 512 imag
 image-to-image (structure to image, colorization, style transfer) and dense prediction (segmentation, depth, surface
 normals).
 
-This repository contains the inference code.
+This repository contains the original inference code, plus an optional RGBD
+decoder-side training extension.
+
+### Native RGB + depth + normals: Colab training
+
+[**Colab instructions, live metrics and Google Drive checkpoints**](docs/RGBD_TRAINING.md).
+The extension trains a decoder sidecar using Jeveration's released depth/normal/
+segmentation heads as teachers; it does not change the original RGB decoder.
+
+```bash
+pip install "git+https://github.com/Apache0ne/Jeveration.git"
+
+# After mounting Google Drive in Colab and preparing RGBD features:
+python -m jeveration.rgbd_train fit \
+  --root /content/jev_rgbd \
+  --save-dir /content/drive/MyDrive/Jeveration_RGBD/checkpoints \
+  --save-every 250 --save-at 1100,2250,3750 \
+  --log-every 10 --steps 4000
+```
+
+The trainer displays a live progress bar, saves full resumable training states
+at chosen steps, and writes TensorBoard and JSONL metrics to Drive. The
+validation set is exactly 20 held-out images. See the guide for preparation
+and resuming from Drive.
 
 ## Setup
 

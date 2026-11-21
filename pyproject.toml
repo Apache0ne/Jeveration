@@ -22,6 +22,8 @@ dependencies = [
   "pillow>=11,<13",
   "flash-linear-attention==0.5.2",
   "datasets>=3,<5",
+  "tqdm>=4.66,<5",
+  "tensorboard>=2.16,<3",
 ]
 
 [project.scripts]

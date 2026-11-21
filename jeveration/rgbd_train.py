@@ -22,6 +22,7 @@ from torch.nn import functional as F
 from torch.utils.data import Dataset,DataLoader
 
 from .rgbd_sidecar import RGBDHead,tap_decoder,decode_maps,save_head
+from .rgbd_tracking import LiveTraining, checkpoint_dir, latest_state_path, save_steps
 
 MODEL="linlinlinlinsdada/Jeveration"
 DATASET="nateraw/parti-prompts"
@@ -161,89 +162,127 @@ def validate(head,ds,device,seg_weight):
     return {**{k:v/len(ds) for k,v in tot.items()},"samples":len(ds)}
 
 def fit(a):
-    if a.steps<1 or a.batch_size<1 or a.grad_accum<1 or a.lr<=0 or a.warmup_steps<1:
+    if a.steps < 1 or a.batch_size < 1 or a.grad_accum < 1 or a.lr <= 0 or a.warmup_steps < 1:
         raise ValueError("Invalid optimizer configuration")
-    if a.eval_every<1 or a.save_every<1 or not 0<a.seg_weight<=2:
-        raise ValueError("eval/save intervals and seg weight must be valid")
-    torch.manual_seed(a.seed);random.seed(a.seed);np.random.seed(a.seed)
-    device=torch.device(a.device)
-    if device.type=="cuda" and not torch.cuda.is_bf16_supported():
+    if (a.eval_every < 1 or a.save_every < 0 or a.log_every < 1
+            or a.keep_last < 0 or not 0 < a.seg_weight <= 2):
+        raise ValueError("Invalid validation, saving or logging configuration")
+    requested_saves = save_steps(a.save_at, a.steps)
+    torch.manual_seed(a.seed)
+    random.seed(a.seed)
+    np.random.seed(a.seed)
+    device = torch.device(a.device)
+    if device.type == "cuda" and not torch.cuda.is_bf16_supported():
         raise RuntimeError("BF16 CUDA support required; use a Colab A100 or L4")
-    if device.type=="cuda":
-        torch.backends.cuda.matmul.allow_tf32=True
-        torch.backends.cudnn.allow_tf32=True
-    root=Path(a.root).expanduser().resolve()
-    train,val=Cache(root,"train"),Cache(root,"val")
-    if len(val)!=20: raise RuntimeError(f"Exactly 20 validation samples required, found {len(val)}")
-    width=train[0]["features"].shape[0]
-    if width!=val[0]["features"].shape[0]: raise RuntimeError("Train/val decoder widths differ")
-    head=RGBDHead(width).to(device).train()
-    optimizer=torch.optim.AdamW(head.parameters(),lr=a.lr,betas=(0.9,0.999),
-                                eps=1e-8,weight_decay=0.01)
-    out=root/"checkpoints";out.mkdir(parents=True,exist_ok=True)
-    latest=out/"trainer_last.pt"
-    start=0;best=float("inf")
-    if a.resume and latest.exists():
-        saved=torch.load(latest,map_location="cpu",weights_only=True)
-        if saved["width"]!=width or saved["steps_target"]!=a.steps:
-            raise RuntimeError("Resume settings differ from saved run")
-        head.load_state_dict(saved["model"]);optimizer.load_state_dict(saved["optimizer"])
+    if device.type == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+    root = Path(a.root).expanduser().resolve()
+    train, val = Cache(root, "train"), Cache(root, "val")
+    if len(val) != 20:
+        raise RuntimeError(f"Exactly 20 validation images required; found {len(val)}")
+    width = train[0]["features"].shape[0]
+    if width != val[0]["features"].shape[0]:
+        raise RuntimeError("Train and validation decoder widths differ")
+    head = RGBDHead(width).to(device).train()
+    optimizer = torch.optim.AdamW(
+        head.parameters(), lr=a.lr, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01
+    )
+    out = checkpoint_dir(a.save_dir if a.save_dir else root / "checkpoints")
+    start, best = 0, float("inf")
+    if a.resume or a.resume_from:
+        resume_path = Path(a.resume_from).expanduser().resolve() if a.resume_from else latest_state_path(out)
+        saved = torch.load(resume_path, map_location="cpu", weights_only=True)
+        if saved["width"] != width or saved["steps_target"] != a.steps:
+            raise RuntimeError("Resume checkpoint decoder width or target number of steps differs")
+        head.load_state_dict(saved["model"], strict=True)
+        optimizer.load_state_dict(saved["optimizer"])
         for state in optimizer.state.values():
-            for k,v in state.items():
-                if isinstance(v,torch.Tensor):state[k]=v.to(device)
-        start=int(saved["step"]);best=float(saved["best"])
-        print(f"Resuming from {start}/{a.steps}")
-    loader=DataLoader(train,batch_size=a.batch_size,shuffle=True,num_workers=0,
-                      drop_last=False,pin_memory=device.type=="cuda")
-    iterator=iter(loader)
-    print(f"BF16={device.type=='cuda'}, train={len(train)}, val=20, effective_batch={a.batch_size*a.grad_accum}",flush=True)
-    warmup=min(a.warmup_steps,max(1,a.steps//10))
-    for step in range(start+1,a.steps+1):
-        if step<=warmup:scale=step/warmup
-        else:scale=0.05+0.95*0.5*(1+math.cos(math.pi*(step-warmup)/max(1,a.steps-warmup)))
-        for group in optimizer.param_groups:group["lr"]=a.lr*scale
-        head.train();optimizer.zero_grad(set_to_none=True);tot=0
-        for _ in range(a.grad_accum):
-            try:b=next(iterator)
-            except StopIteration:
-                iterator=iter(loader);b=next(iterator)
-            b={k:v.to(device,non_blocking=True) for k,v in b.items()}
-            # Horizontal flip with correct camera-frame normal orientation.
-            if a.flip and random.random()<0.5:
-                b["features"]=b["features"].flip(-1)
-                b["rgb"]=b["rgb"].flip(-1)
-                b["depth"]=b["depth"].flip(-1)
-                b["seg"]=b["seg"].flip(-1)
-                b["normal"]=b["normal"].flip(-2)
-                b["normal"][...,0]*=-1
-            with torch.autocast("cuda",dtype=torch.bfloat16,enabled=device.type=="cuda"):
-                raw=head(b["features"],b["rgb"])
-                loss,parts=loss_parts(raw,b,a.seg_weight)
-            if not torch.isfinite(loss):raise RuntimeError(f"Non-finite loss at step {step}")
-            (loss/a.grad_accum).backward();tot+=loss.item()/a.grad_accum
-        torch.nn.utils.clip_grad_norm_(head.parameters(),max_norm=1.)
-        optimizer.step()
-        if step==1 or step%25==0 or step==a.steps:
-            print(f"step {step}/{a.steps} loss={tot:.5f} lr={optimizer.param_groups[0]['lr']:.2e}",flush=True)
-        if step%a.eval_every==0 or step==a.steps:
-            metrics=validate(head,val,device,a.seg_weight);metrics["step"]=step
-            with (out/"validation.jsonl").open("a",encoding="utf8") as f:f.write(json.dumps(metrics)+"\n")
-            print("validation",metrics,flush=True)
-            if metrics["loss"]<best:
-                best=metrics["loss"]
-                save_head(out/"rgbd_best.pt",head,metrics=metrics,dataset=DATASET,teacher=MODEL)
-        if step%a.save_every==0 or step==a.steps:
-            save_head(out/"rgbd_last.pt",head,step=step,teacher=MODEL)
-            torch.save(dict(model={k:v.detach().cpu() for k,v in head.state_dict().items()},
-                       optimizer=optimizer.state_dict(),width=width,steps_target=a.steps,
-                       step=step,best=best),latest)
-    print("Done; this is teacher distillation, not ground-truth 3D calibration")
+            for key, value in state.items():
+                if isinstance(value, torch.Tensor):
+                    state[key] = value.to(device)
+        start, best = int(saved["step"]), float(saved["best"])
+        if not 0 <= start <= a.steps:
+            raise RuntimeError(f"Invalid resume step {start}")
+        print(f"Resumed optimizer and decoder geometry head from {resume_path} at {start}/{a.steps}", flush=True)
+    loader = DataLoader(
+        train, batch_size=a.batch_size, shuffle=True, num_workers=0,
+        drop_last=False, pin_memory=device.type == "cuda"
+    )
+    iterator = iter(loader)
+    warmup = min(a.warmup_steps, max(1, a.steps // 10))
+    print(
+        f"BF16={device.type=='cuda'} | training={len(train)} images | validation=20 "
+        f"| effective batch={a.batch_size * a.grad_accum} | checkpoints={out} "
+        f"| save every={a.save_every} | extra save steps={sorted(requested_saves)}",
+        flush=True
+    )
+    tracker = LiveTraining(out, total=a.steps, start=start, log_every=a.log_every,
+                           keep_last=a.keep_last, progress=a.progress,
+                           tensorboard=a.tensorboard)
+    try:
+        for step in range(start + 1, a.steps + 1):
+            if step <= warmup:
+                scale = step / warmup
+            else:
+                scale = 0.05 + 0.95 * 0.5 * (
+                    1 + math.cos(math.pi * (step - warmup) / max(1, a.steps - warmup))
+                )
+            for group in optimizer.param_groups:
+                group["lr"] = a.lr * scale
+            head.train()
+            optimizer.zero_grad(set_to_none=True)
+            total = 0.0
+            component_total = {"depth": 0.0, "normal": 0.0, "seg": 0.0}
+            for _ in range(a.grad_accum):
+                try:
+                    b = next(iterator)
+                except StopIteration:
+                    iterator = iter(loader)
+                    b = next(iterator)
+                b = {k: v.to(device, non_blocking=True) for k, v in b.items()}
+                if a.flip and random.random() < 0.5:
+                    b["features"] = b["features"].flip(-1)
+                    b["rgb"] = b["rgb"].flip(-1)
+                    b["depth"] = b["depth"].flip(-1)
+                    b["seg"] = b["seg"].flip(-1)
+                    b["normal"] = b["normal"].flip(-2)
+                    b["normal"][..., 0] *= -1
+                with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device.type == "cuda"):
+                    raw = head(b["features"], b["rgb"])
+                    loss, parts = loss_parts(raw, b, a.seg_weight)
+                if not torch.isfinite(loss):
+                    raise RuntimeError(f"Non-finite training loss at step {step}")
+                (loss / a.grad_accum).backward()
+                total += float(loss.item()) / a.grad_accum
+                for name in component_total:
+                    component_total[name] += float(parts[name].item()) / a.grad_accum
+            grad_norm = torch.nn.utils.clip_grad_norm_(head.parameters(), max_norm=1.0)
+            optimizer.step()
+            gpu_gib = (torch.cuda.memory_allocated(device) / (1024 ** 3)
+                       if device.type == "cuda" else None)
+            tracker.step(step, total, optimizer.param_groups[0]["lr"],
+                         component_total, grad_norm, gpu_gib)
+            if step % a.eval_every == 0 or step == a.steps:
+                metrics = validate(head, val, device, a.seg_weight)
+                tracker.validation(step, metrics)
+                if metrics["loss"] < best:
+                    best = float(metrics["loss"])
+                    tracker.best(step, head, metrics, save_head)
+            if ((a.save_every > 0 and step % a.save_every == 0)
+                    or step in requested_saves or step == a.steps):
+                tracker.checkpoint(step, head, optimizer, width, best, save_head)
+    finally:
+        tracker.close()
+    print(f"Done. Drive/local checkpoints and metrics: {out}", flush=True)
+    print("Teacher agreement is not ground-truth 3D accuracy.", flush=True)
+
 
 def infer(a):
     from .rgbd_pipeline import JeverationRGBDPipeline
     from .dense import depth_view,normal_view,seg_view
     from PIL import Image
-    path=Path(a.root)/"checkpoints"/"rgbd_best.pt"
+    path=Path(a.save_dir if a.save_dir else Path(a.root)/"checkpoints")/"rgbd_best.pt"
     if not path.exists(): raise FileNotFoundError(f"Missing trained sidecar at {path}")
     w,d=download_weights(a.weights_dir,a.model)
     pipe=JeverationRGBDPipeline(w,decoder=d,device=a.device).load_rgbd_head(path)
@@ -282,10 +321,18 @@ def make_parser():
             s.add_argument("--seg-weight",type=float,default=0.3)
             s.add_argument("--eval-every",type=int,default=200)
             s.add_argument("--save-every",type=int,default=200)
+            s.add_argument("--save-at",default="",help="Extra comma-separated checkpoint steps, e.g. 500,1200,3000")
+            s.add_argument("--save-dir",default=None,help="Checkpoint destination, e.g. /content/drive/MyDrive/Jeveration_RGBD/checkpoints")
+            s.add_argument("--log-every",type=int,default=10,help="Persist training metrics every N steps; tqdm updates each step")
+            s.add_argument("--keep-last",type=int,default=0,help="Keep most recent N periodic checkpoints; 0 keeps all")
+            s.add_argument("--progress",action=argparse.BooleanOptionalAction,default=True)
+            s.add_argument("--tensorboard",action=argparse.BooleanOptionalAction,default=True)
+            s.add_argument("--resume-from",default=None,help="Specific trainer_step_XXXXXX.pt checkpoint")
             s.add_argument("--flip",action=argparse.BooleanOptionalAction,default=True)
             s.add_argument("--resume",action="store_true")
         else:
             s.add_argument("--prompt",required=True)
+            s.add_argument("--save-dir",default=None,help="Folder holding rgbd_best.pt")
             s.add_argument("--output",default="/content/jev_rgbd_preview")
     return p
 
