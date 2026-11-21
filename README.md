@@ -34,6 +34,10 @@ at chosen steps, and writes TensorBoard and JSONL metrics to Drive. The
 validation set is exactly 20 held-out images. See the guide for preparation
 and resuming from Drive.
 
+## Ground-truth geometry training (Hypersim pilot)
+
+The new [ground-truth RGBD training guide](docs/HYPERSIM_GROUND_TRUTH_RGBD.md) uses genuine Hypersim depth/semantics and camera-derived surface normals, not Jeveration's predicted pseudo-labels. It validates decoder-to-image alignment, keeps exactly 20 scene-held-out validation samples, and saves progress/checkpoints/reports to Drive. The curated paired subset is small (~150 frames), so this is an alignment and training pilot before large-scale geometry training.
+
 ## Setup
 
 Python 3.12 and a CUDA GPU.
