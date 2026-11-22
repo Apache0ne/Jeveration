@@ -125,3 +125,69 @@ def task_training_loss(task,pred,gt,model,semantic_weights):
         return (pix*w).sum()/(wgt*w).sum().clamp_min(1)
     raise ValueError(task)
 
+@torch.no_grad()
+def evaluate(model,ds,device):
+    """Pixel-weighted depth, normal and mIoU on exactly 20 held-out frames."""
+    model.eval();dtotal=0.;dn=0;ntotal=0.;nn=0
+    cm=torch.zeros((CLASSES,CLASSES),dtype=torch.float64)
+    rows=[]
+    for i in range(len(ds)):
+        b=to_batch(ds[i],device)
+        pred=predictions_512(model(b["features"],b["rgb"]),b["rgb"])
+        dv=b["depth_valid"].bool();nv=b["normal_valid"].bool()
+        sv=b["seg_valid"].bool()&(b["seg"]!=255)
+        rel=(pred["depth"]-b["depth"]).abs()/b["depth"].clamp_min(.01)
+        dot=(pred["normal"]*F.normalize(b["normal"].float(),dim=-1)).sum(-1)
+        angle=dot.clamp(-1+1e-6,1-1e-6).acos()*(180/math.pi)
+        dr=float(rel[dv].mean()) if bool(dv.any()) else float("nan")
+        nr=float(angle[nv].mean()) if bool(nv.any()) else float("nan")
+        dtotal+=float(rel[dv].sum());dn+=int(dv.sum())
+        ntotal+=float(angle[nv].sum());nn+=int(nv.sum())
+        label=b["seg"][sv].long();predicted=pred["seg"][sv]
+        if label.numel():
+            cm+=torch.bincount((label*CLASSES+predicted).cpu(),minlength=CLASSES**2).reshape(CLASSES,CLASSES)
+        rows.append({"file":ds.files[i].name,"depth_absrel":dr,"normal_deg":nr})
+    present=cm.sum(1)>0
+    union=cm.sum(0)+cm.sum(1)-cm.diag()
+    miou=(cm.diag()[present]/union[present].clamp_min(1)).mean()
+    metrics={"depth_absrel":dtotal/max(1,dn),"normal_deg":ntotal/max(1,nn),
+             "seg_acc":float(cm.diag().sum()/cm.sum().clamp_min(1)),
+             "seg_miou":float(miou),"validation_images":len(ds),
+             "depth_pixels":dn,"normal_pixels":nn}
+    return metrics,rows
+
+def save_full(folder,step,model,optimizers,best,config,identifier):
+    state={"format":"frozen-probe-v1","step":step,"target_steps":TOTAL_STEPS,
+           "cache_id":identifier,"config":config,
+           "model":{k:v.detach().cpu().clone() for k,v in model.state_dict().items()},
+           "optimizers":{k:o.state_dict() for k,o in optimizers.items()},
+           "best":best,"python_random":random.getstate(),"torch_random":torch.get_rng_state()}
+    path=folder/f"trainer_probe_step_{step:06d}.pt"
+    atomic_torch_save(path,state)
+    atomic_json(folder/"latest_probe.json",{"trainer":path.name,"step":step})
+
+def restore(folder,model,optims,config,identifier,device):
+    pointer=json.loads((folder/"latest_probe.json").read_text())
+    state=torch.load(folder/pointer["trainer"],map_location="cpu",weights_only=True)
+    if state.get("cache_id")!=identifier or state.get("config")!=config:
+        raise RuntimeError("Cannot resume: training parameters or dataset changed")
+    model.load_state_dict(state["model"],strict=True)
+    for task,opt in optims.items():
+        opt.load_state_dict(state["optimizers"][task])
+        for v in opt.state.values():
+            for key,item in v.items():
+                if torch.is_tensor(item):v[key]=item.to(device)
+    random.setstate(state["python_random"])
+    torch.set_rng_state(state["torch_random"])
+    return int(state["step"]),state["best"]
+
+def load_best(folder,width,device):
+    folder=Path(folder)
+    init=torch.load(folder/"probe_initializer.pt",map_location="cpu",weights_only=True)
+    model=RGBDProbe(width,init["projected"],init["seed"]).to(device)
+    model.encoder.load_state_dict(init["encoder"])
+    for task in ("depth","normal","seg"):
+        state=torch.load(folder/f"best_{task}.pt",map_location="cpu",weights_only=True)
+        getattr(model,task).load_state_dict(state["weights"],strict=True)
+    return model.eval().requires_grad_(False)
+
