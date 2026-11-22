@@ -72,7 +72,7 @@ def latest_state_path(folder):
 class LiveTraining:
     """Keep a visible step-level progress bar and durable logs/checkpoints."""
     def __init__(self, folder, total, start=0, log_every=10, keep_last=0,
-                 progress=True, tensorboard=True):
+                 progress=True, tensorboard=True, microbatches_per_step=1):
         if total < 1 or not 0 <= start <= total:
             raise ValueError("Invalid training progress state")
         if log_every < 1 or keep_last < 0:
@@ -81,6 +81,10 @@ class LiveTraining:
         self.total = total
         self.log_every = log_every
         self.keep_last = keep_last
+        self.microbatches_per_step = int(microbatches_per_step)
+        self._microstep_used = False
+        if self.microbatches_per_step < 1:
+            raise ValueError("microbatches_per_step must be >= 1")
         self.jsonl = (self.folder / "training_metrics.jsonl").open("a", encoding="utf8", buffering=1)
         self.val_jsonl = (self.folder / "validation.jsonl").open("a", encoding="utf8", buffering=1)
         self.events = (self.folder / "events.jsonl").open("a", encoding="utf8", buffering=1)
@@ -91,13 +95,23 @@ class LiveTraining:
             self.writer = SummaryWriter(log_dir=str(self.folder / "tensorboard"), flush_secs=10)
         if progress:
             from tqdm.auto import tqdm
-            self.pbar = tqdm(total=total, initial=start, desc="RGBD training",
-                             file=sys.stdout, dynamic_ncols=True, mininterval=0.35,
+            count=total*self.microbatches_per_step
+            already=start*self.microbatches_per_step
+            self.pbar = tqdm(total=count, initial=already, desc="RGBD microbatches",
+                             file=sys.stdout, dynamic_ncols=True, mininterval=0.6,
                              smoothing=0.2)
 
     def _write_event(self, kind, step, **values):
         event = {"type": kind, "step": int(step), **values}
         self.events.write(json.dumps(event) + "\n")
+
+    def microstep(self, step, micro):
+        """Advance after EACH completed microbatch, not just an optimizer step."""
+        self._microstep_used = True
+        if self.pbar:
+            self.pbar.update(1)
+            self.pbar.set_postfix(step=f"{step}/{self.total}",
+                                  accumulation=f"{micro}/{self.microbatches_per_step}")
 
     def step(self, step, loss, lr, parts, grad_norm, gpu_gib=None):
         metrics = {"step": int(step), "loss": float(loss), "lr": float(lr),
@@ -106,8 +120,12 @@ class LiveTraining:
         if gpu_gib is not None:
             metrics["gpu_allocated_gib"] = float(gpu_gib)
         if self.pbar:
-            self.pbar.update(1)
-            self.pbar.set_postfix(loss=f"{loss:.4f}", depth=f"{metrics['depth']:.3f}",
+            # Legacy callers with one microbatch per step use step() alone.
+            # Ground-truth training updates progress with microstep() instead.
+            if self.microbatches_per_step == 1 and not self._microstep_used:
+                self.pbar.update(1)
+            self.pbar.set_postfix(step=f"{step}/{self.total}",
+                                  loss=f"{loss:.4f}", depth=f"{metrics['depth']:.3f}",
                                   normal=f"{metrics['normal']:.3f}",
                                   seg=f"{metrics['seg']:.3f}", lr=f"{lr:.2e}")
         if step == 1 or step % self.log_every == 0 or step == self.total:
