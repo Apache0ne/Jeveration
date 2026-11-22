@@ -27,6 +27,7 @@ from torch.utils.data import Dataset, DataLoader
 from .rgbd_gt_data import (SOURCE_REPO, paired_files, download_paired_files,
                            load_hypersim_pair, scene_disjoint_split)
 from .rgbd_gt_encoder import FrozenTATiTokEncoder,image_alignment
+from .rgbd_gt_cache import ensure_cache_manifest, CACHE_VERSION, ENCODER_INPUT_RANGE
 from .rgbd_sidecar import RGBDHead, tap_decoder, decode_maps, save_head,load_head
 from .rgbd_tracking import LiveTraining,checkpoint_dir,latest_state_path,save_steps
 
@@ -59,6 +60,8 @@ def prepare(a):
     pairs=paired_files(a.dataset)
     train,val,val_scenes=scene_disjoint_split(pairs,20,a.seed)
     spec=dict(dataset=a.dataset,seed=a.seed,
+              cache_schema_version=CACHE_VERSION,
+              encoder_input_range=ENCODER_INPUT_RANGE,
               validation_scenes=val_scenes,
               source_camera="pinhole 60deg 1024x768, square-center-crop 512",
               depth="ground-truth range converted to camera-axis Z",
@@ -66,10 +69,7 @@ def prepare(a):
               semantics="official NYU40 labels to 13-class conservative mapping; ambiguous ignored",
               min_ssim=a.min_ssim,train_count_candidate=len(train),
               validation_count_candidate=len(val))
-    if manifest.is_file():
-        if json.loads(manifest.read_text(encoding="utf8"))!=spec:
-            raise RuntimeError("Existing cache has different dataset/split/config; use a different --root")
-    else:_atomic_json(manifest,spec)
+    ensure_cache_manifest(root,spec)
     # Only fetch the selected train and validation scene frames, not the full Hypersim archive.
     download_paired_files(train+val,root/"downloads",a.dataset)
     checkpoints=root/"cache"
