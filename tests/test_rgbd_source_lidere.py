@@ -142,5 +142,28 @@ class SourceFaithfulnessTests(unittest.TestCase):
         zero.backward()
         self.assertTrue(torch.isfinite(tensor.grad).all())
 
+    def test_cli_parses_fit_report_and_preflight_and_dispatches(self):
+        """Regression for Colab: main() must not receive ArgumentParser."""
+        from argparse import Namespace
+        from unittest.mock import patch
+        cases={
+            "preflight":["--dim","64","--base-size","64","--max-depth","80"],
+            "fit":["--steps","1200","--batch-size","1","--grad-accum","16"],
+            "report":["--output","/tmp/holdout-report"]
+        }
+        for command,flags in cases.items():
+            with self.subTest(command=command):
+                parsed=trainer.parse_args([command,*flags])
+                self.assertIsInstance(parsed,Namespace)
+                self.assertEqual(parsed.command,command)
+                self.assertTrue(hasattr(parsed,"root"))
+                with patch.object(sys,"argv",["lidere",command,*flags]):
+                    with patch.object(trainer,{"fit":"train","report":"report","preflight":"preflight"}[command]) as fn:
+                        trainer.main()
+                        fn.assert_called_once()
+                        supplied=fn.call_args.args[0]
+                        self.assertIsInstance(supplied,Namespace)
+                        self.assertEqual(supplied.command,command)
+
 if __name__=="__main__":
     unittest.main()
