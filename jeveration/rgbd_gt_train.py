@@ -89,9 +89,11 @@ def prepare(a):
     print(f"Paired train candidates={len(train)}, validation={len(val)};"
           " no pseudo-labels; decoder alignment checked per image",flush=True)
     from tqdm.auto import tqdm
+    preview_dir=root/"alignment_previews"
+    preview_dir.mkdir(exist_ok=True)
     for split,entries in (("train",train),("val",val)):
         accepted=0
-        for entry in tqdm(entries,desc=f"GT decoder cache {split}"):
+        for candidate_index,entry in enumerate(tqdm(entries,desc=f"GT decoder cache {split}")):
             if split=="val" and accepted>=20: break
             ident=f"{entry['scene']}_{entry['frame']}"
             path=checkpoints/split/f"{ident}.npz"
@@ -103,6 +105,17 @@ def prepare(a):
             raw=load_hypersim_pair(entry,root/"downloads")
             prompt="A realistic indoor photograph of a furnished room."
             feat,rgb,alignment=_row_to_cache(raw,codec,encoder,a.device,prompt)
+            # Inspect what the 128 codes reconstruct, even for rejected pairs.
+            # Source and decode are aligned only when scene geometry is retained.
+            if candidate_index%10==0:
+                import PIL.ImageDraw
+                sheet=Image.new("RGB",(1024,544),(30,30,30))
+                sheet.paste(Image.fromarray(raw["rgb"]),(0,32))
+                sheet.paste(Image.fromarray(rgb),(512,32))
+                drawer=PIL.ImageDraw.Draw(sheet)
+                drawer.text((8,8),"Hypersim source RGB",fill="white")
+                drawer.text((520,8),f"Jeveration decode, SSIM {alignment['ssim']:.3f}",fill="white")
+                sheet.save(preview_dir/f"{split}_{ident}.jpg",quality=85)
             if not np.isfinite(feat).all():
                 raise RuntimeError(f"Non-finite decoder features: {ident}")
             if alignment["ssim"]<a.min_ssim:
@@ -133,9 +146,21 @@ def prepare(a):
         print(f"{split}: {accepted}/{len(entries)} aligned samples",flush=True)
     train_count=len(list((checkpoints/"train").glob("*.npz")))
     val_count=len(list((checkpoints/"val").glob("*.npz")))
+    scores=[]
+    for split in ("train","val"):
+        d=checkpoints/split
+        for fp in d.glob("*.rejected.json"):
+            reason=json.loads(fp.read_text(encoding="utf8"))
+            if "ssim" in reason:scores.append(float(reason["ssim"]))
+        for fp in d.glob("*.npz"):
+            with np.load(fp) as loaded:scores.append(float(loaded["alignment_ssim"]))
     _atomic_json(root/"preparation_summary.json",
                  dict(train=train_count,val=val_count,required_validation=20,
-                      dataset=a.dataset,minimum_ssim=a.min_ssim))
+                      dataset=a.dataset,minimum_ssim=a.min_ssim,
+                      ssims=dict(n=len(scores),median=float(np.median(scores)) if scores else None,
+                                 p10=float(np.percentile(scores,10)) if scores else None,
+                                 p90=float(np.percentile(scores,90)) if scores else None),
+                      alignment_preview_folder=str(preview_dir)))
     if val_count!=20:
         raise RuntimeError(f"Got {val_count}/20 accepted validation examples. "
                            "Decoder alignment insufficient. Do not train until resolved.")
