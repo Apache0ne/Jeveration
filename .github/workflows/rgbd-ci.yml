@@ -51,3 +51,5 @@ jobs:
           python -m unittest discover -s tests -p "test_rgbd_gt_stage.py" -v
       - name: Test RGBD v2 geometry math and masked gradients
         run: python -m unittest discover -s tests -p "test_rgbd_v2_math.py" -v
+      - name: Test v3 private task gradients, detached fusion and safe checkpoint
+        run: python -m unittest discover -s tests -p "test_rgbd_v3_isolation.py" -v
