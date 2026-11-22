@@ -428,7 +428,7 @@ def preflight(args):
     print("[LiDeRe preflight] PASS — exact 95/20 cache, source forward + "
           "backward for depth/normals/segmentation",flush=True)
 
-def parse_args():
+def parse_args(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     sub=p.add_subparsers(dest="command",required=True)
     for command in ("fit","report","preflight"):
@@ -459,7 +459,7 @@ def parse_args():
             x.add_argument("--resume",action="store_true")
         else:
             x.add_argument("--output",default="/content/Jeveration_Source_LiDeRe_Report")
-    return p
+    return p.parse_args(argv)
 
 def main():
     a=parse_args()
