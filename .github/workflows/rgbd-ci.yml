@@ -46,4 +46,6 @@ jobs:
       - name: Test official TA-TiTok input-range and safe cache migration
         run: python -m unittest discover -s tests -p "test_rgbd_gt_cache.py" -v
       - name: Check Drive to local SSD staging and idempotent reuse
-        run: python -m unittest discover -s tests -p "test_rgbd_gt_stage.py" -v
+        run: |
+          python -m pip install -q tqdm
+          python -m unittest discover -s tests -p "test_rgbd_gt_stage.py" -v
