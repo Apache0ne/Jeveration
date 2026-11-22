@@ -68,7 +68,9 @@ def training_inputs(b,task,model):
 
 def task_loss(task,result,target,mask,depth_fn):
     if not bool(mask.any()):
-        raise RuntimeError(f"No valid {task} ground-truth labels")
+        # Entirely unlabeled frames must not poison cross-entropy or crash a
+        # deterministic 95-image training run. Preserve a valid zero gradient.
+        return result.float().sum()*0
     if task=="depth":
         # Exact Probe3D DepthLoss: sigmoid-style scale-invariant log error and
         # multiscale spatial gradient matching, max-depth exclusion.
@@ -89,7 +91,9 @@ def evaluate(model,dataset,device,per_image=False):
         with amp(device):
             out=model(b["features"])
         p=rescale_maps(out)
-        valid_d=b["depth_valid"].bool()&(b["depth"]>0)&(b["depth"]<=model.max_depth)
+        # Same all-valid GT mask used by v1-v3. max_depth is a *training*
+        # exclusion only; do not silently make the held-out evaluation easier.
+        valid_d=b["depth_valid"].bool()&(b["depth"]>0)
         valid_n=b["normal_valid"].bool()
         valid_s=b["seg_valid"].bool()&(b["seg"]!=255)
         delta=(p["depth"][:,0]-b["depth"]).abs()/b["depth"].clamp_min(.001)
@@ -214,7 +218,8 @@ def train(args):
                   base_size=args.base_size,max_depth=args.max_depth,
                   seed=args.seed,lr_depth=args.lr_depth,lr_normal=args.lr_normal,
                   lr_seg=args.lr_seg,grad_accum=args.grad_accum,
-                  warmup=args.warmup)
+                  warmup=args.warmup,weight_decay=args.weight_decay,
+                  max_grad_norm=args.max_grad_norm)
     metadata=dict(in_channels=width,dim=args.dim,
                   base_size=args.base_size,max_depth=args.max_depth,
                   source="LiDeRe vendor 5aafadc4eb21b8c69ad2d8bc863fac35d4528d58",
@@ -258,8 +263,8 @@ def train(args):
             model.train()
             losses={k:0.0 for k in TASKS}
             for micro in range(args.grad_accum):
-                # Deterministic balanced rounds: sample each training image before
-                # repeating within an epoch, while retaining stochastic order.
+                # Deterministic with-replacement sampling of the fixed
+                # training split. This is not a balanced epoch traversal.
                 rng=random.Random(args.seed+step*1000003+micro*997)
                 index=rng.randrange(COUNT_TRAIN)
                 b=move(train_ds[index],device)
@@ -321,6 +326,14 @@ def report(args):
     if not (len(list((local/"cache"/"train").glob("*.npz")))==95 and
             len(list((local/"cache"/"val").glob("*.npz")))==20):
         raise RuntimeError("Expected same 95/20 dataset")
+    current_id=check_splits(local)
+    latest=Path(args.save_dir)/"latest_source.json"
+    if latest.is_file():
+        pointer=json.loads(latest.read_text())
+        state=torch.load(Path(args.save_dir)/pointer["checkpoint"],
+                         map_location="cpu",weights_only=True)
+        if state["manifest"]!=current_id:
+            raise RuntimeError("Refusing evaluation on a different GT cache/split")
     data=GeometryCache(local,"val",preload=False)
     model=load_best(args.save_dir,args.device)
     metrics,rows=evaluate(model,data,torch.device(args.device),per_image=True)
