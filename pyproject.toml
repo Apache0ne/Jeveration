@@ -32,7 +32,7 @@ dependencies = [
 jeveration-rgbd = "jeveration.rgbd_train:main"
 
 [tool.setuptools]
-packages = ["jeveration"]
+packages = ["jeveration", "jeveration.vendor"]
 include-package-data = true
 
 [tool.setuptools.package-data]
@@ -40,4 +40,7 @@ jeveration = [
   "third_party/tatitok/modeling/*.py",
   "third_party/tatitok/modeling/modules/*.py",
   "third_party/tatitok/LICENSE",
+
 ]
+
+"jeveration.vendor" = ["LICENSE_LIDERE"]
