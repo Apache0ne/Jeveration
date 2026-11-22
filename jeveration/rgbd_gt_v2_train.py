@@ -300,7 +300,8 @@ def train(a):
             if not bool(torch.isfinite(grad_norm)):
                 raise RuntimeError(f"Nonfinite gradient at step {step}")
             optimizer.step()
-            ema_step(ema,model,a.ema_decay)
+            # Bias-correct EMA startup: do not retain random initial weights.
+            ema_step(ema,model,min(a.ema_decay,1.0-1.0/(step+1)))
             # Retain existing logger output, plus geometry-specific v2 history.
             gpu_gib=(torch.cuda.memory_allocated(device)/2**30
                      if device.type=="cuda" else None)
