@@ -30,6 +30,7 @@ from .rgbd_gt_encoder import FrozenTATiTokEncoder,image_alignment
 from .rgbd_gt_cache import ensure_cache_manifest, CACHE_VERSION, ENCODER_INPUT_RANGE
 from .rgbd_sidecar import RGBDHead, tap_decoder, decode_maps, save_head,load_head
 from .rgbd_tracking import LiveTraining,checkpoint_dir,latest_state_path,save_steps
+from .rgbd_gt_stage import stage_groundtruth_cache
 
 def _atomic_json(p, obj):
     p=Path(p);p.parent.mkdir(parents=True,exist_ok=True)
@@ -171,11 +172,27 @@ def prepare(a):
 
 
 class GTCache(Dataset):
-    def __init__(self,root,split):
+    """The few hundred source examples can be RAM-resident on Colab's 53 GiB host.
+
+    Previously every gradient-accumulation microbatch decompressed an NPZ
+    directly from Google Drive's FUSE mount, leaving the GPU idle for minutes.
+    Load once with a visible progress bar; only checkpoints stay on Drive.
+    """
+    def __init__(self,root,split,preload=False):
         self.files=sorted((Path(root)/"cache"/split).glob("*.npz"))
         if not self.files:raise FileNotFoundError(f"No {split} cache. Run prepare first.")
+        self.ram=None
+        if preload:
+            from tqdm.auto import tqdm
+            print(f"[GTCache] Caching {len(self.files)} {split} compressed examples into system RAM once...",flush=True)
+            self.ram=[]
+            for index in tqdm(range(len(self.files)),desc=f"Load {split} -> RAM",
+                              mininterval=.5):
+                self.ram.append(self._read(index))
+            print(f"[GTCache] {split}: {len(self.ram)} samples ready in RAM; "
+                  "no more Google Drive NPZ reads during optimizer updates.",flush=True)
     def __len__(self):return len(self.files)
-    def __getitem__(self,i):
+    def _read(self,i):
         with np.load(self.files[i]) as z:
             arrays={key:z[key].copy() for key in (
                 "features","rgb","depth","normal","seg",
@@ -188,6 +205,10 @@ class GTCache(Dataset):
              depth_valid=torch.from_numpy(arrays["depth_valid"].astype(bool)),
              normal_valid=torch.from_numpy(arrays["normal_valid"].astype(bool)),
              seg_valid=torch.from_numpy(arrays["seg_valid"].astype(bool)))
+    def __getitem__(self,i):
+        if self.ram is not None:
+            return self.ram[i]
+        return self._read(i)
 
 
 def masked_mean(x,valid):
@@ -253,7 +274,20 @@ def evaluate(head,ds,device,seg_weight):
 
 def fit(a):
     root=Path(a.root)
-    ds=GTCache(root,"train");val=GTCache(root,"val")
+    print(f"[FIT] Source dataset/metadata on Drive: {root}",flush=True)
+    if a.cache_mode in ("ram","local"):
+        # Stages ONLY cache/{train,val} and source_manifest.json to SSD.
+        # Drive remains the source of truth and the checkpoint destination.
+        data_root=stage_groundtruth_cache(root,a.local_cache_dir)
+    else:
+        data_root=root
+        print("[FIT] Direct Drive NPZ reads enabled. This is slower than --cache-mode local/ram.",flush=True)
+    if a.cache_mode=="ram":
+        print("[FIT] Loading staged local SSD samples into system RAM once.",flush=True)
+    ds=GTCache(data_root,"train",preload=a.cache_mode=="ram")
+    val=GTCache(data_root,"val",preload=a.cache_mode=="ram")
+    print(f"[FIT] Training data root: {data_root}; Drive checkpoints: "
+          f"{a.save_dir or root/'checkpoints'}",flush=True)
     if len(val)!=20:raise RuntimeError(f"Expected 20 validation examples; found {len(val)}")
     if a.batch_size<1 or a.grad_accum<1 or a.steps<1 or a.warmup_steps<1:
         raise ValueError("Invalid optimizer settings")
@@ -262,6 +296,8 @@ def fit(a):
     if device.type=="cuda" and not torch.cuda.is_bf16_supported():
         raise RuntimeError("BF16-capable GPU needed")
     width=ds[0]["features"].shape[0]
+    print(f"[FIT] Loaded {len(ds)} training + {len(val)} held-out samples. "
+          f"Decoder feature width={width}; building RGBD head on {device}...",flush=True)
     model=RGBDHead(width).to(device)
     optimizer=torch.optim.AdamW(model.parameters(),lr=a.lr,
                                 weight_decay=.01,betas=(.9,.999),eps=1e-8)
@@ -282,8 +318,12 @@ def fit(a):
     loader=DataLoader(ds,batch_size=a.batch_size,shuffle=True,
                       num_workers=0,pin_memory=device.type=="cuda")
     iterator=iter(loader)
+    print(f"[FIT] Ready: {a.steps} optimizer steps, {a.grad_accum} microbatches/step, "
+          f"effective batch {a.batch_size*a.grad_accum}. "
+          "The progress bar now advances every microbatch.",flush=True)
     tracker=LiveTraining(folder,a.steps,start,log_every=a.log_every,
-                         keep_last=a.keep_last,progress=True,tensorboard=True)
+                         keep_last=a.keep_last,progress=True,tensorboard=True,
+                         microbatches_per_step=a.grad_accum)
     try:
         for step in range(start+1,a.steps+1):
             warm=min(a.warmup_steps,max(1,a.steps//10))
@@ -292,20 +332,31 @@ def fit(a):
             for g in optimizer.param_groups:g["lr"]=a.lr*scale
             model.train();optimizer.zero_grad(set_to_none=True)
             loss_sum=0;part_sum={k:0. for k in ("depth","normal","seg")}
-            for _ in range(a.grad_accum):
+            for micro in range(a.grad_accum):
+                if step==start+1 and micro==0:
+                    print("[FIT] First microbatch: fetching cached sample...",flush=True)
                 try:b=next(iterator)
                 except StopIteration:
                     iterator=iter(loader);b=next(iterator)
-                b={k:v.to(device) for k,v in b.items()}
+                if step==start+1 and micro==0:
+                    print("[FIT] First batch fetched. Transferring tensors to GPU...",flush=True)
+                b={k:v.to(device,non_blocking=True) for k,v in b.items()}
                 if random.random()<.5:
                     for key in ("features","rgb","depth","seg","depth_valid","normal_valid","seg_valid"):
                         b[key]=b[key].flip(-1)
                     b["normal"]=b["normal"].flip(-2);b["normal"][...,0]*=-1
+                if step==start+1 and micro==0:
+                    print("[FIT] First microbatch: model forward + geometry losses...",flush=True)
                 with torch.autocast("cuda",dtype=torch.bfloat16,enabled=device.type=="cuda"):
                     raw=model(b["features"],b["rgb"])
                     loss,parts=gt_loss(raw,b,a.seg_weight)
                 if not torch.isfinite(loss):raise RuntimeError(f"Non-finite loss at {step}")
+                if step==start+1 and micro==0:
+                    print("[FIT] First microbatch: backward pass...",flush=True)
                 (loss/a.grad_accum).backward()
+                if step==start+1 and micro==0:
+                    print("[FIT] First microbatch complete; future microbatches update the progress bar.",flush=True)
+                tracker.microstep(step,micro+1)
                 loss_sum+=float(loss.item())/a.grad_accum
                 for k in part_sum:part_sum[k]+=float(parts[k].item())/a.grad_accum
             grad=torch.nn.utils.clip_grad_norm_(model.parameters(),1.0)
@@ -398,6 +449,11 @@ def parser():
             if name=="fit":
                 x.add_argument("--steps",type=int,default=1200)
                 x.add_argument("--batch-size",type=int,default=1)
+                x.add_argument("--cache-mode",choices=("ram","local","drive","disk"),
+                               default="ram",
+                               help="ram: Drive->/content->RAM; local: Drive->/content SSD; drive/disk: slow direct Drive reads")
+                x.add_argument("--local-cache-dir",default="/content/jeveration_gt_pilot_cache",
+                               help="Local Colab SSD destination for the prepared NPZ samples")
                 x.add_argument("--grad-accum",type=int,default=16)
                 x.add_argument("--lr",type=float,default=1.5e-4)
                 x.add_argument("--warmup-steps",type=int,default=100)
