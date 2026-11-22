@@ -319,3 +319,92 @@ def train(a):
         log.close();bar.close()
     print("[probe] Training complete; individual best readouts:",out,flush=True)
 
+def report(a):
+    """Compare independently selected probes against the same 20 GT examples."""
+    from PIL import Image
+    from .dense import depth_view,normal_view,seg_view
+    root=Path(a.root)
+    local=stage_groundtruth_cache(root,a.local_cache_dir)
+    check_splits(local)
+    ds=GeometryCache(local,"val",preload=False)
+    width=ds[0]["features"].shape[0]
+    model=load_best(a.save_dir,width,a.device)
+    metrics,rows=evaluate(model,ds,torch.device(a.device))
+    metrics["baselines"]={
+        "v1":{"depth_absrel":.6608,"normal_deg":41.07,"seg_acc":.5954},
+        "v2":{"depth_absrel":.5614,"normal_deg":42.02,"seg_acc":.5690},
+        "v3":{"depth_absrel":.5800,"normal_deg":38.67,"seg_acc":.5903,"seg_miou":.2043}}
+    metrics["training_images"]=TRAIN_COUNT
+    metrics["optimizer_steps_per_task"]=TOTAL_STEPS
+    metrics["method"]="fixed Jeveration readout + ridge/prototype initialization + log-depth bins"
+    out=Path(a.output);out.mkdir(parents=True,exist_ok=True)
+    atomic_json(out/"metrics.json",metrics)
+    with (out/"per_image.csv").open("w",newline="") as fd:
+        writer=csv.DictWriter(fd,fieldnames=["file","depth_absrel","normal_deg"])
+        writer.writeheader();writer.writerows(rows)
+    for i in range(len(ds)):
+        batch=to_batch(ds[i],torch.device(a.device))
+        with torch.inference_mode():
+            p=predictions_512(model(batch["features"],batch["rgb"]),batch["rgb"])
+        depth=batch["depth"][0].cpu().numpy()
+        normal=batch["normal"][0].cpu().numpy()
+        seg=batch["seg"][0].cpu().numpy()
+        gt_sem=seg_view(seg.clip(0,12)).copy();gt_sem[seg==255]=0
+        rgb=(batch["rgb"][0].permute(1,2,0).cpu().numpy()*255).clip(0,255).astype("uint8")
+        panels=[rgb,depth_view(depth),depth_view(p["depth"][0].cpu().numpy()),
+                normal_view(normal),normal_view(p["normal"][0].cpu().numpy()),
+                gt_sem,seg_view(p["seg"][0].cpu().numpy())]
+        image=Image.new("RGB",(7*256,256))
+        for j,panel in enumerate(panels):
+            image.paste(Image.fromarray(np.asarray(panel,dtype=np.uint8)).resize((256,256)),(j*256,0))
+        image.save(out/f"val_{i:02d}.jpg",quality=85)
+    folder=Path(a.save_dir)
+    for name in ("analytic_validation.json","initialization.json",
+                 "training_probe.jsonl","validation_probe.jsonl","latest_probe.json"):
+        if (folder/name).exists():
+            (out/name).write_bytes((folder/name).read_bytes())
+    if (root/"source_manifest.json").exists():
+        (out/"source_manifest.json").write_bytes((root/"source_manifest.json").read_bytes())
+    archive=out.parent/"Jeveration_RGBD_FrozenProbe_Report.zip"
+    with zipfile.ZipFile(archive,"w",compression=zipfile.ZIP_DEFLATED) as zf:
+        for f in sorted(out.iterdir()):
+            if f.is_file():zf.write(f,f.name)
+    print("Report ZIP:",archive,flush=True)
+    print(json.dumps(metrics,indent=2),flush=True)
+    return archive
+
+def parser():
+    p=argparse.ArgumentParser(description=__doc__)
+    commands=p.add_subparsers(dest="cmd",required=True)
+    for mode in ("fit","report"):
+        a=commands.add_parser(mode)
+        a.add_argument("--root",default="/content/drive/MyDrive/Jeveration_GT/pilot")
+        a.add_argument("--save-dir",default="/content/drive/MyDrive/Jeveration_GT/pilot/checkpoints_frozen_probe")
+        a.add_argument("--local-cache-dir",default="/content/jeveration_gt_pilot_cache")
+        a.add_argument("--cache-mode",choices=("ram","local"),default="ram")
+        a.add_argument("--device",default="cuda" if torch.cuda.is_available() else "cpu")
+        if mode=="fit":
+            a.add_argument("--steps",type=int,default=TOTAL_STEPS)
+            a.add_argument("--batch-size",type=int,default=1)
+            a.add_argument("--grad-accum",type=int,default=16)
+            a.add_argument("--projected",type=int,default=48)
+            a.add_argument("--lr-depth",type=float,default=2e-4)
+            a.add_argument("--lr-normal",type=float,default=3e-4)
+            a.add_argument("--lr-seg",type=float,default=2.5e-4)
+            a.add_argument("--warmup",type=int,default=40)
+            a.add_argument("--eval-every",type=int,default=100)
+            a.add_argument("--save-every",type=int,default=200)
+            a.add_argument("--save-at",default="400,700,900")
+            a.add_argument("--log-every",type=int,default=10)
+            a.add_argument("--init-stride",type=int,default=4)
+            a.add_argument("--ridge-reg",type=float,default=.005)
+            a.add_argument("--seed",type=int,default=42)
+            a.add_argument("--resume",action="store_true")
+        else:a.add_argument("--output",default="/content/Jeveration_FrozenProbe_Report")
+    return p
+
+def main():
+    args=parser().parse_args()
+    {"fit":train,"report":report}[args.cmd](args)
+
+if __name__=="__main__":main()
