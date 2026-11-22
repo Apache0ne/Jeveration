@@ -158,7 +158,7 @@ class SourceFaithfulnessTests(unittest.TestCase):
                 self.assertEqual(parsed.command,command)
                 self.assertTrue(hasattr(parsed,"root"))
                 with patch.object(sys,"argv",["lidere",command,*flags]):
-                    with patch.object(trainer,command) as fn:
+                    with patch.object(trainer,{"fit":"train","report":"report","preflight":"preflight"}[command]) as fn:
                         trainer.main()
                         fn.assert_called_once()
                         supplied=fn.call_args.args[0]
