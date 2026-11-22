@@ -191,3 +191,131 @@ def load_best(folder,width,device):
         getattr(model,task).load_state_dict(state["weights"],strict=True)
     return model.eval().requires_grad_(False)
 
+def train(a):
+    if a.steps!=TOTAL_STEPS:raise ValueError("Same-cache comparison requires 1200 steps")
+    if a.batch_size!=1 or a.grad_accum<1 or a.eval_every<1 or a.log_every<1:
+        raise ValueError("Invalid optimizer settings")
+    torch.manual_seed(a.seed);random.seed(a.seed);np.random.seed(a.seed)
+    device=torch.device(a.device)
+    if device.type=="cuda" and not torch.cuda.is_bf16_supported():
+        raise RuntimeError("Requires BF16-capable GPU")
+    root=Path(a.root).expanduser().resolve()
+    local=stage_groundtruth_cache(root,a.local_cache_dir)
+    cache_id=check_splits(local)
+    trainset=GeometryCache(local,"train",preload=a.cache_mode=="ram")
+    valset=GeometryCache(local,"val",preload=a.cache_mode=="ram")
+    width=trainset[0]["features"].shape[0]
+    model=RGBDProbe(width,a.projected,a.seed).to(device)
+    out=checkpoint_dir(a.save_dir)
+    config={"seed":a.seed,"width":width,"projected":a.projected,
+            "lr_depth":a.lr_depth,"lr_normal":a.lr_normal,"lr_seg":a.lr_seg,
+            "grad_accum":a.grad_accum,"init_stride":a.init_stride,"ridge_reg":a.ridge_reg}
+    if not a.resume:
+        meta=analytic_init(model,trainset,device,a.init_stride,a.ridge_reg)
+        atomic_torch_save(out/"probe_initializer.pt",{
+            "encoder":{k:v.detach().cpu().clone() for k,v in model.encoder.state_dict().items()},
+            "projected":a.projected,"seed":a.seed,"metadata":meta})
+        atomic_json(out/"initialization.json",meta)
+    else:
+        init=torch.load(out/"probe_initializer.pt",map_location="cpu",weights_only=True)
+        model.encoder.load_state_dict(init["encoder"])
+    opts={
+        "depth":torch.optim.AdamW(model.depth.parameters(),lr=a.lr_depth,weight_decay=.04),
+        "normal":torch.optim.AdamW(model.normal.parameters(),lr=a.lr_normal,weight_decay=.04),
+        "seg":torch.optim.AdamW(model.seg.parameters(),lr=a.lr_seg,weight_decay=.03)}
+    start=0;best={"depth":float("inf"),"normal":float("inf"),"seg":float("-inf")}
+    if a.resume:start,best=restore(out,model,opts,config,cache_id,device)
+    class_counts=torch.zeros(CLASSES,dtype=torch.float64)
+    for sample in trainset:
+        valid=sample["seg_valid"]&(sample["seg"]!=255)
+        if bool(valid.any()):
+            class_counts+=torch.bincount(sample["seg"][valid].long(),minlength=CLASSES).double()
+    probability=class_counts/class_counts.sum().clamp_min(1)
+    weights=probability.clamp_min(1e-8).rsqrt().clamp(max=8.)
+    weights[class_counts==0]=0
+    weights=weights.float().to(device)
+    print(f"[probe] Same 95 train / 20 validation, 1200 updates; decoder width {width}",flush=True)
+    print("[probe] Frozen features, analytic ridge depth/normal, semantic prototypes",flush=True)
+    print(f"[probe] Checkpoints: {out}",flush=True)
+    if start==0:
+        baseline,_=evaluate(model,valset,device)
+        atomic_json(out/"analytic_validation.json",baseline)
+        print("[probe] Step 0 (analytical baseline):",baseline,flush=True)
+        best={"depth":float(baseline["depth_absrel"]),
+              "normal":float(baseline["normal_deg"]),
+              "seg":float(baseline["seg_miou"])}
+        for task,score in best.items():
+            atomic_torch_save(out/f"best_{task}.pt",{
+                "step":0,"metric":score,
+                "weights":{k:v.detach().cpu().clone()
+                           for k,v in getattr(model,task).state_dict().items()}})
+    log=(out/"training_probe.jsonl").open("a",encoding="utf8",buffering=1)
+    bar=tqdm(total=TOTAL_STEPS*a.grad_accum,initial=start*a.grad_accum,
+             desc="Frozen probe microbatches",dynamic_ncols=True)
+    saves=save_steps(a.save_at,TOTAL_STEPS)
+    try:
+        for step in range(start+1,TOTAL_STEPS+1):
+            scale=(step/max(1,a.warmup) if step<=a.warmup else
+                   .12+.88*.5*(1+math.cos(math.pi*(step-a.warmup)/
+                                           max(1,TOTAL_STEPS-a.warmup))))
+            for task,opt in opts.items():
+                for group in opt.param_groups:
+                    group["lr"]=getattr(a,"lr_"+task)*scale
+                opt.zero_grad(set_to_none=True)
+            total={"depth":0.,"normal":0.,"seg":0.}
+            model.train();model.encoder.eval()
+            for micro in range(a.grad_accum):
+                rand=random.Random(a.seed+step*100003+micro*127)
+                b=to_batch(trainset[rand.randrange(len(trainset))],device)
+                if rand.random()<.5:
+                    for k in ("features","rgb","original_rgb","depth","seg",
+                              "depth_valid","normal_valid","seg_valid"):
+                        b[k]=b[k].flip(-1)
+                    b["normal"]=b["normal"].flip(-2)
+                    b["normal"][...,0]*=-1
+                with torch.no_grad():
+                    feature=model.feature_map(b["features"],b["rgb"]).detach()
+                    gt=data128(b)
+                for task in ("depth","normal","seg"):
+                    with torch.autocast("cuda",dtype=torch.bfloat16,enabled=device.type=="cuda"):
+                        prediction=getattr(model,task)(feature)
+                        loss=task_training_loss(task,prediction,gt,model,weights)
+                    if not bool(torch.isfinite(loss)):
+                        raise RuntimeError(f"Nonfinite {task} loss at step {step}")
+                    (loss/a.grad_accum).backward()
+                    total[task]+=float(loss.detach())/a.grad_accum
+                bar.update(1)
+            for task,opt in opts.items():
+                norm=nn.utils.clip_grad_norm_(getattr(model,task).parameters(),1.)
+                if not bool(torch.isfinite(norm)):
+                    raise RuntimeError(f"Nonfinite {task} gradients")
+                opt.step()
+            bar.set_postfix(**{k:f"{v:.3f}" for k,v in total.items()})
+            if step==1 or step%a.log_every==0 or step==TOTAL_STEPS:
+                log.write(json.dumps({"step":step,**total})+"\n")
+            if step%a.eval_every==0 or step==TOTAL_STEPS:
+                metrics,_=evaluate(model,valset,device)
+                with (out/"validation_probe.jsonl").open("a",encoding="utf8") as stream:
+                    stream.write(json.dumps({"step":step,**metrics})+"\n")
+                print(f"[probe] validation {step}: AbsRel={metrics['depth_absrel']:.4f}, "
+                      f"normals={metrics['normal_deg']:.2f}°, "
+                      f"seg acc={metrics['seg_acc']:.4f}, mIoU={metrics['seg_miou']:.4f}",flush=True)
+                for task,value in {"depth":metrics["depth_absrel"],
+                                   "normal":metrics["normal_deg"],
+                                   "seg":metrics["seg_miou"]}.items():
+                    improved=(value>best[task] if task=="seg" else value<best[task])
+                    if improved:
+                        best[task]=float(value)
+                        atomic_torch_save(out/f"best_{task}.pt",{
+                            "step":step,"metric":value,
+                            "weights":{k:v.detach().cpu().clone()
+                                       for k,v in getattr(model,task).state_dict().items()}})
+                        print(f"[probe] Best {task} updated: step {step}",flush=True)
+            if ((a.save_every and step%a.save_every==0)
+                 or step in saves or step==TOTAL_STEPS):
+                save_full(out,step,model,opts,best,config,cache_id)
+                print(f"[probe] Saved three optimizers and weights at step {step}",flush=True)
+    finally:
+        log.close();bar.close()
+    print("[probe] Training complete; individual best readouts:",out,flush=True)
+
