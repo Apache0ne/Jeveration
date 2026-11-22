@@ -180,8 +180,8 @@ def train(args):
     extras=save_steps(args.save_at,N_STEPS)
     log=(folder/"metrics_v3.jsonl").open("a",encoding="utf8",buffering=1)
     from tqdm.auto import tqdm
-    progress=tqdm(total=N_STEPS,initial=start,desc="v3 independent updates",
-                  dynamic_ncols=True,mininterval=.5)
+    progress=tqdm(total=N_STEPS*args.grad_accum,initial=start*args.grad_accum,
+                  desc="v3 independent microbatches",dynamic_ncols=True,mininterval=.5)
     print("[v3] three PRIVATE networks, each has its OWN optimizer and 1200 updates",flush=True)
     print(f"[v3] train=95 val=20 width={width}, effective batch={args.batch_size*args.grad_accum}",flush=True)
     print(f"[v3] class counts={counts.tolist()}",flush=True)
@@ -199,6 +199,8 @@ def train(args):
             total={key:0. for key in ("depth","normal","seg","fusion")}
             fusion_active=step>=args.fusion_start
             for micro in range(args.grad_accum):
+                if step==start+1 and micro==0:
+                    print("[v3] first microbatch: depth -> normals -> segmentation -> optional fusion",flush=True)
                 batch=_sample(ds,step,micro,args.batch_size,args.seed)
                 batch=augment(batch,original_probability=0.0,
                               feature_drop=args.feature_drop)
@@ -222,6 +224,7 @@ def train(args):
                         raise RuntimeError(f"Nonfinite fusion loss at {step}")
                     (f_loss/args.grad_accum).backward()
                     total["fusion"]+=float(f_loss.detach())/args.grad_accum
+                progress.update(1)
                 if step==start+1 and micro==0:
                     print("[v3] first microbatch completed; independent backward passes succeeded",flush=True)
             for task in TASK_CHANNELS:
@@ -232,7 +235,6 @@ def train(args):
                 norm=nn.utils.clip_grad_norm_(fusion.parameters(),1.)
                 if not bool(torch.isfinite(norm)):raise RuntimeError("Invalid fusion gradient")
                 opts["fusion"].step()
-            progress.update(1)
             progress.set_postfix(depth=f"{total['depth']:.3f}",
                                  normal=f"{total['normal']:.3f}",
                                  seg=f"{total['seg']:.3f}",
