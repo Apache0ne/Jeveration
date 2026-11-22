@@ -26,7 +26,6 @@ from torch.utils.data import Dataset, DataLoader
 
 from .rgbd_gt_data import (SOURCE_REPO, paired_files, download_paired_files,
                            load_hypersim_pair, scene_disjoint_split)
-from .rgbd_gt_encoder import FrozenTATiTokEncoder,image_alignment
 from .rgbd_gt_cache import ensure_cache_manifest, CACHE_VERSION, ENCODER_INPUT_RANGE
 from .rgbd_sidecar import RGBDHead, tap_decoder, decode_maps, save_head,load_head
 from .rgbd_tracking import LiveTraining,checkpoint_dir,latest_state_path,save_steps
@@ -41,6 +40,7 @@ def _atomic_json(p, obj):
 
 def _row_to_cache(row, codec,encoder,device,prompt):
     from .images import to_uint8
+    from .rgbd_gt_encoder import image_alignment
     actual_rgb=torch.from_numpy(row["rgb"].copy()).permute(2,0,1)[None].to(device).float()/255.
     with torch.inference_mode():
         codes=encoder(actual_rgb)
@@ -86,6 +86,7 @@ def prepare(a):
     codec=ImageCodec().to(a.device)
     codec.load_decoder(decoder)
     codec.eval()
+    from .rgbd_gt_encoder import FrozenTATiTokEncoder
     encoder=FrozenTATiTokEncoder(codec).to(a.device).eval()
     print(f"Paired train candidates={len(train)}, validation={len(val)};"
           " no pseudo-labels; decoder alignment checked per image",flush=True)
