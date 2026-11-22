@@ -30,6 +30,7 @@ from .rgbd_gt_encoder import FrozenTATiTokEncoder,image_alignment
 from .rgbd_gt_cache import ensure_cache_manifest, CACHE_VERSION, ENCODER_INPUT_RANGE
 from .rgbd_sidecar import RGBDHead, tap_decoder, decode_maps, save_head,load_head
 from .rgbd_tracking import LiveTraining,checkpoint_dir,latest_state_path,save_steps
+from .rgbd_gt_stage import stage_groundtruth_cache
 
 def _atomic_json(p, obj):
     p=Path(p);p.parent.mkdir(parents=True,exist_ok=True)
@@ -273,10 +274,20 @@ def evaluate(head,ds,device,seg_weight):
 
 def fit(a):
     root=Path(a.root)
-    print(f"[FIT] Starting model training; cache={root}, device={a.device}",flush=True)
-    print("[FIT] Preloading NPZ data into system RAM so Drive latency is paid only once.",flush=True)
-    ds=GTCache(root,"train",preload=a.cache_mode=="ram")
-    val=GTCache(root,"val",preload=a.cache_mode=="ram")
+    print(f"[FIT] Source dataset/metadata on Drive: {root}",flush=True)
+    if a.cache_mode in ("ram","local"):
+        # Stages ONLY cache/{train,val} and source_manifest.json to SSD.
+        # Drive remains the source of truth and the checkpoint destination.
+        data_root=stage_groundtruth_cache(root,a.local_cache_dir)
+    else:
+        data_root=root
+        print("[FIT] Direct Drive NPZ reads enabled. This is slower than --cache-mode local/ram.",flush=True)
+    if a.cache_mode=="ram":
+        print("[FIT] Loading staged local SSD samples into system RAM once.",flush=True)
+    ds=GTCache(data_root,"train",preload=a.cache_mode=="ram")
+    val=GTCache(data_root,"val",preload=a.cache_mode=="ram")
+    print(f"[FIT] Training data root: {data_root}; Drive checkpoints: "
+          f"{a.save_dir or root/'checkpoints'}",flush=True)
     if len(val)!=20:raise RuntimeError(f"Expected 20 validation examples; found {len(val)}")
     if a.batch_size<1 or a.grad_accum<1 or a.steps<1 or a.warmup_steps<1:
         raise ValueError("Invalid optimizer settings")
@@ -438,8 +449,11 @@ def parser():
             if name=="fit":
                 x.add_argument("--steps",type=int,default=1200)
                 x.add_argument("--batch-size",type=int,default=1)
-                x.add_argument("--cache-mode",choices=("ram","disk"),default="ram",
-                               help="RAM caches samples once; disk repeatedly reads NPZs (slow on Drive)")
+                x.add_argument("--cache-mode",choices=("ram","local","drive","disk"),
+                               default="ram",
+                               help="ram: Drive->/content->RAM; local: Drive->/content SSD; drive/disk: slow direct Drive reads")
+                x.add_argument("--local-cache-dir",default="/content/jeveration_gt_pilot_cache",
+                               help="Local Colab SSD destination for the prepared NPZ samples")
                 x.add_argument("--grad-accum",type=int,default=16)
                 x.add_argument("--lr",type=float,default=1.5e-4)
                 x.add_argument("--warmup-steps",type=int,default=100)
