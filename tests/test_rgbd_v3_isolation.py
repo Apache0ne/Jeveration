@@ -1,9 +1,17 @@
 """CPU regression checks for v3 task isolation and detached fusion."""
 import tempfile
 import unittest
+import sys
+import types
 from pathlib import Path
 
 import torch
+
+# Avoid importing the full VLM/TA-TiTok stack in tiny CPU math tests.
+# All v3 imports below still resolve and execute the real package modules.
+pkg=types.ModuleType("jeveration")
+pkg.__path__=[str(Path(__file__).resolve().parents[1]/"jeveration")]
+sys.modules["jeveration"]=pkg
 from torch import nn
 from jeveration.rgbd_v3_model import (
     IndependentHead, GeometryFusion, decoded,save_component,load_component,
