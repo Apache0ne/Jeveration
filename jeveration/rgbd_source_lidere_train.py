@@ -374,17 +374,71 @@ def report(args):
     print(json.dumps(metrics,indent=2),flush=True)
     return destination
 
+def preflight(args):
+    """Check the actual 95/20 cache and each original-source loss/backward on GPU.
+
+    Does NOT start a training run, touch the optimizer checkpoints, or change
+    the existing split. Exceptions are intentionally left intact so Colab
+    prints the actual error, not a generic CalledProcessError.
+    """
+    import platform
+    import sys
+    print("[LiDeRe preflight] Python:",sys.version,flush=True)
+    print("[LiDeRe preflight] PyTorch:",torch.__version__,
+          "CUDA:",torch.version.cuda,flush=True)
+    device=torch.device(args.device)
+    if device.type=="cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA GPU is not available in this Colab runtime")
+        if not torch.cuda.is_bf16_supported():
+            raise RuntimeError("This GPU does not support required BF16")
+        print("[LiDeRe preflight] GPU:",torch.cuda.get_device_name(device),
+              "total VRAM GiB:",round(torch.cuda.get_device_properties(device).total_memory/2**30,2),
+              flush=True)
+    root=Path(args.root).expanduser().resolve()
+    print("[LiDeRe preflight] Checking Drive cache:",root,flush=True)
+    local=stage_groundtruth_cache(root,args.local_cache_dir)
+    identity=check_splits(local)
+    dataset=GeometryCache(local,"train",preload=False)
+    validation=GeometryCache(local,"val",preload=False)
+    if (len(dataset),len(validation))!=(95,20):
+        raise RuntimeError("Expected exactly 95 train and 20 held-out files")
+    width=int(dataset[0]["features"].shape[0])
+    print(f"[LiDeRe preflight] cache fingerprint={identity}, width={width}",flush=True)
+    print(f"[LiDeRe preflight] Constructing ORIGINAL LiDeRe dim={args.dim}, "
+          f"query grid={args.base_size}",flush=True)
+    model=SourceLiDeReRGBD(width,args.dim,args.base_size,args.max_depth).to(device)
+    sample=move(dataset[0],device)
+    depth_fn=DepthLoss(weight_sig=10.,weight_grad=.5,max_depth=args.max_depth)
+    for task in TASKS:
+        model.zero_grad(set_to_none=True)
+        print(f"[LiDeRe preflight] {task}: exact-source forward",flush=True)
+        with amp(device):
+            pred,target,valid=training_inputs(sample,task,model)
+            objective=task_loss(task,pred,target,valid,depth_fn)
+        print(f"[LiDeRe preflight] {task}: loss={float(objective.detach()):.6f}",
+              flush=True)
+        if not bool(torch.isfinite(objective)):
+            raise RuntimeError(f"{task} objective was not finite on training sample 0")
+        objective.backward()
+        if device.type=="cuda":
+            print(f"[LiDeRe preflight] {task}: CUDA peak allocated "
+                  f"{torch.cuda.max_memory_allocated(device)/2**30:.2f} GiB",flush=True)
+        del pred,target,valid,objective
+    print("[LiDeRe preflight] PASS — exact 95/20 cache, source forward + "
+          "backward for depth/normals/segmentation",flush=True)
+
 def parse_args():
     p=argparse.ArgumentParser(description=__doc__)
     sub=p.add_subparsers(dest="command",required=True)
-    for command in ("fit","report"):
+    for command in ("fit","report","preflight"):
         x=sub.add_parser(command)
         x.add_argument("--root",default="/content/drive/MyDrive/Jeveration_GT/pilot")
         x.add_argument("--local-cache-dir",default="/content/jeveration_gt_pilot_cache")
         x.add_argument("--save-dir",default="/content/drive/MyDrive/Jeveration_GT/pilot/checkpoints_source_lidere")
         x.add_argument("--cache-mode",choices=("ram","local"),default="ram")
         x.add_argument("--device",default="cuda" if torch.cuda.is_available() else "cpu")
-        if command=="fit":
+        if command in ("fit","preflight"):
             x.add_argument("--steps",type=int,default=1200)
             x.add_argument("--batch-size",type=int,default=1)
             x.add_argument("--grad-accum",type=int,default=16)
@@ -409,6 +463,6 @@ def parse_args():
 
 def main():
     a=parse_args()
-    {"fit":train,"report":report}[a.command](a)
+    {"fit":train,"report":report,"preflight":preflight}[a.command](a)
 
 if __name__=="__main__":main()
