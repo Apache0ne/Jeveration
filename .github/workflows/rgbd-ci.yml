@@ -49,3 +49,5 @@ jobs:
         run: |
           python -m pip install -q tqdm
           python -m unittest discover -s tests -p "test_rgbd_gt_stage.py" -v
+      - name: Verify lightweight GT startup avoids full VLM inference imports
+        run: python -m unittest discover -s tests -p "test_rgbd_gt_lazy_imports.py" -v
