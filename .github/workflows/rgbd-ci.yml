@@ -30,6 +30,12 @@ jobs:
                   "jeveration/rgbd_sidecar.py",
                   "jeveration/rgbd_pipeline.py",
                   "jeveration/rgbd_tracking.py",
+                  "jeveration/rgbd_source_lidere.py",
+                  "jeveration/rgbd_source_lidere_train.py",
+                  "jeveration/vendor/lidere.py",
+                  "jeveration/vendor/probe3d_losses.py",
+                  "jeveration/vendor/probe3d_probes.py",
+                  "jeveration/vendor/LICENSE_LIDERE",
                   "jeveration/third_party/tatitok/modeling/modules/blocks.py",
               ):
                   assert path in entries, f"Wheel missing {path}"
@@ -55,3 +61,5 @@ jobs:
         run: python -m unittest discover -s tests -p "test_rgbd_v3_isolation.py" -v
       - name: Test frozen few-shot ridge, prototypes, gradients and checkpoints
         run: python -m unittest discover -s tests -p "test_rgbd_frozen_probe.py" -v
+      - name: Verify exact upstream sources and LiDeRe/Probe3D gradients
+        run: python -m unittest discover -s tests -p "test_rgbd_source_lidere.py" -v
