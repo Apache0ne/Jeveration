@@ -42,6 +42,42 @@ Ground-truth validation report:
 
 Result /content/Jeveration_Hypersim_GT_Report.zip contains metrics.json, 20 image comparisons, individual metrics, run manifest, training metrics and validation logs. Actual weights remain in Drive.
 
+## Colab speed fix: stage the prepared dataset on local SSD
+
+The raw Hypersim downloads, immutable 512px training caches, and checkpoints remain
+in **Google Drive**. Training no longer repeatedly decompresses a random Drive
+NPZ over the FUSE mount.
+
+`fit` now defaults to `--cache-mode ram`: it copies only
+`cache/train/*.npz`, `cache/val/*.npz`, and `source_manifest.json`
+to `/content/jeveration_gt_pilot_cache`, then preloads these compressed
+examples once into **system RAM**. The staging is resumable within a runtime
+and checks ZIP integrity on fresh copies. The cache manifest prevents mixing
+different experiments. For lower host-RAM use `--cache-mode local`
+to read directly from local SSD instead of keeping all examples in RAM.
+`--cache-mode drive` reads Drive directly and is not recommended.
+
+Progress now prints during the initial stage, RAM load, and the first
+GPU forward/backward. A tqdm bar increments on **each completed microbatch**,
+not only after the complete gradient accumulation. If the first GPU backward
+is still slow, the output shows precisely which operation is taking time.
+
+Example command (this is the default behavior):
+
+    python -u -m jeveration.rgbd_gt_train fit \
+      --root /content/drive/MyDrive/Jeveration_GT/pilot \
+      --save-dir /content/drive/MyDrive/Jeveration_GT/pilot/checkpoints \
+      --cache-mode ram \
+      --local-cache-dir /content/jeveration_gt_pilot_cache \
+      --steps 1200 --batch-size 1 --grad-accum 16 \
+      --lr 0.00015 --warmup-steps 100 --eval-every 100 \
+      --save-every 200 --save-at 500,900 --log-every 10
+
+On Colab runtime reset the **temporary** /content stage is copied from the
+persistent Drive cache again. No original dataset redownload, tokenizer
+preparation or regression data generation is necessary. Checkpoints are
+separate from the stage and can be resumed from Drive with `--resume`.
+
 ## Scaling up
 
 This is a first full-code, small-data alignment pilot, NOT the final scale. For production-quality geometry use a much larger official Hypersim sample with true distance/depth, normal_cam, semantics and cameras. The old 4,200-image pseudo-labeled dataset should remain separate. Redistribution and downstream licensing must respect Apple's CC BY-SA 3.0 terms.
