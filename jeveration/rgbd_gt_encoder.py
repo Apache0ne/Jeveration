@@ -14,6 +14,7 @@ from torch.nn import functional as F
 
 from . import config
 from .tokenizer import ImageCodec, _fetch
+from .rgbd_gt_preprocess import tokenizer_pixels
 from modeling.modules.blocks import TiTokEncoder
 
 
@@ -55,9 +56,9 @@ class FrozenTATiTokEncoder(nn.Module):
         """Input actual RGB [B,3,512,512] in [0,1], output token ids [B,128]."""
         if rgb.ndim!=4 or rgb.shape[1:]!=(3,512,512):
             raise ValueError(f"Expected [B,3,512,512], got {tuple(rgb.shape)}")
-        # TA-TiTok pretrained input is 256x256, normalized to [-1,+1].
-        x=F.interpolate(rgb.float(),size=(256,256),mode="bicubic",align_corners=False)
-        x=x.clamp(0,1)*2-1
+        # Official TA-TiTok example passes float RGB / 255.0: values [0,1].
+        # The old [-1,1] normalization corrupted VQ IDs and scene alignment.
+        x=tokenizer_pixels(rgb)
         z=self.encoder(x.to(self.latent_tokens.dtype),self.latent_tokens)
         # [B,C,1,128] -> [B,128,C], nearest public VQ code.
         z=z.squeeze(2).transpose(1,2).float()

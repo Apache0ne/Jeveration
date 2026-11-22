@@ -2,6 +2,10 @@
 
 This path is different from the previous pseudo-label distillation in rgbd_train.py. It does NOT generate depth targets using Jeveration's pre-trained dense heads.
 
+## November 22, 2026: TA-TiTok input preprocessing fix
+
+The original pilot incorrectly transformed RGB [0,1] inputs into [-1,1] before using the pretrained tokenizer encoder. The upstream TA-TiTok README_MaskGen.md example passes RGB/255 in [0,1] directly. That discrepancy produced SSIM values as low as 0.02 and only 14/110 accepted train frames, 12/40 validation candidates in the user's failed run. The fix retains [0,1], verifies the input range, archives the invalid encoded samples/rejection markers under cache_archived_bad_rgb_range_v1/, and reuses the previously downloaded Hypersim source files under downloads/. The 150 source frames do not need to be downloaded again. Retain the SSIM threshold at 0.40; if alignment still fails after this fix, inspect the diagnostic images and text conditioning instead of weakening the threshold.
+
 ## Source and limits
 
 Dataset: https://huggingface.co/datasets/aaronyee/hypersim-train-subset (CC BY-SA 3.0). This subset contains approximately 150 paired frames across 15 official Hypersim training scenes: final-preview RGB, true rendered camera-range HDF5, and NYU40 semantic HDF5. The other subset RGB files without depth are not used.
