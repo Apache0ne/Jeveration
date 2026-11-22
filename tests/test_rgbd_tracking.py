@@ -71,6 +71,23 @@ class TestRGBDTracking(unittest.TestCase):
             self.assertEqual(len((folder / "validation.jsonl").read_text().splitlines()), 1)
             self.assertEqual(len((folder / "events.jsonl").read_text().splitlines()), 5)
 
+    def test_microbatch_progress_count_without_double_increment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tracker = tracking.LiveTraining(
+                tmp, total=3, log_every=1, progress=False,
+                tensorboard=False, microbatches_per_step=4)
+            try:
+                self.assertEqual(tracker.microbatches_per_step, 4)
+                for micro in range(1, 5):
+                    tracker.microstep(1, micro)
+                self.assertTrue(tracker._microstep_used)
+                tracker.step(1, 0.3, 1e-4,
+                             {"depth": 0.1, "normal": 0.1, "seg": 0.1},
+                             grad_norm=0.4)
+                assert (Path(tmp)/"training_metrics.jsonl").exists()
+            finally:
+                tracker.close()
+
     def test_empty_resume_folder_is_an_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(FileNotFoundError):
