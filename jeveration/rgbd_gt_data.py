@@ -143,10 +143,22 @@ def download_paired_files(pairs,destination,repo_id=SOURCE_REPO):
     from huggingface_hub import hf_hub_download
     destination=Path(destination);destination.mkdir(parents=True,exist_ok=True)
     from tqdm.auto import tqdm
+    reused = 0
+    downloaded = 0
     for pair in tqdm(pairs,desc="Ground-truth Hypersim files"):
         for kind in ("rgb","depth","semantic"):
+            local_file = destination / pair[kind]
+            # The existing 150-pair run saved source files on Drive. Reuse
+            # these exact paths without another Hub HEAD request per file.
+            if local_file.is_file() and local_file.stat().st_size > 0:
+                reused += 1
+                continue
             hf_hub_download(repo_id=repo_id,repo_type="dataset",filename=pair[kind],
                             local_dir=str(destination))
+            downloaded += 1
+    print(f"Source file reuse: {reused} previously downloaded, "
+          f"{downloaded} newly fetched; none of the ground-truth sources were discarded.",
+          flush=True)
 
 
 def load_hypersim_pair(pair,root):
