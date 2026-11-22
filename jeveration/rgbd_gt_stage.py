@@ -52,7 +52,7 @@ def stage_groundtruth_cache(drive_root, local_root="/content/jeveration_gt_cache
                                "Choose another --local-cache-dir.")
     else:
         # If local artifacts already exist, require proof that they're from the same experiment.
-        if any((local_root / "cache" / split).glob("*.npz") for split in ("train", "val")):
+        if any(any((local_root / "cache" / split).glob("*.npz")) for split in ("train", "val")):
             raise RuntimeError("Existing unstamped local cache: use an empty --local-cache-dir")
         payload = {"drive_root": str(drive_root), "manifest_sha256": signature}
         tmp = signature_file.with_suffix(".partial")
