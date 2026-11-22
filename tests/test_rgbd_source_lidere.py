@@ -165,5 +165,19 @@ class SourceFaithfulnessTests(unittest.TestCase):
                         self.assertIsInstance(supplied,Namespace)
                         self.assertEqual(supplied.command,command)
 
+    def test_colab_self_repairs_stale_installed_package(self):
+        """Do not regress to pip --upgrade or an unverified runpy import."""
+        import json
+        notebook=json.loads((ROOT/"notebooks/Jeveration_Source_LiDeRe_95_Colab.ipynb").read_text())
+        install=notebook["cells"][1]["source"]
+        train_cell=notebook["cells"][3]["source"]
+        self.assertIn("--force-reinstall",install)
+        self.assertIn("--no-deps",install)
+        self.assertIn("parse_args",install)
+        self.assertIn("--force-reinstall",train_cell)
+        self.assertIn("verified_lidere_trainer",train_cell)
+        self.assertIn("module.main()",train_cell)
+        self.assertNotIn("runpy.run_module",train_cell)
+
 if __name__=="__main__":
     unittest.main()
