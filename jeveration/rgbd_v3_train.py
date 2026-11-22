@@ -53,7 +53,7 @@ def _save_all(out,step,heads,fusion,optims,choices,args):
                fusion=_clone_cpu(fusion),
                optimizers={k:v.state_dict() for k,v in optims.items()},
                best=choices,random_state=random.getstate(),
-               numpy_state=np.random.get_state(),cpu_rng=torch.get_rng_state(),
+               cpu_rng=torch.get_rng_state(),
                cuda_rng=torch.cuda.get_rng_state_all() if torch.cuda.is_available() else [],
                config=dict(fusion_start=args.fusion_start,grad_accum=args.grad_accum,
                            batch_size=args.batch_size,seed=args.seed))
@@ -81,7 +81,6 @@ def _restore(out,heads,fusion,optims,args,device):
             for name,item in v.items():
                 if isinstance(item,torch.Tensor):v[name]=item.to(device)
     random.setstate(st["random_state"])
-    np.random.set_state(st["numpy_state"])
     torch.set_rng_state(st["cpu_rng"])
     if device.type=="cuda" and st["cuda_rng"]:
         torch.cuda.set_rng_state_all(st["cuda_rng"])
