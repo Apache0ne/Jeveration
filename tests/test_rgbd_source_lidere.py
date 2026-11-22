@@ -110,5 +110,37 @@ class SourceFaithfulnessTests(unittest.TestCase):
             value=trainer.task_loss(task,pred,target,mask,depth_fn)
             self.assertTrue(bool(torch.isfinite(value)))
 
+    def test_complete_optimizer_resume_and_zero_label_gradient(self):
+        m=model.SourceLiDeReRGBD(in_channels=8,dim=16,base_size=16)
+        opts={k:torch.optim.AdamW(
+                (p for p in m.heads[k].parameters() if p.requires_grad),lr=1e-4)
+              for k in ("depth","normal","seg")}
+        settings={"dim":16,"base":16,"seed":42}
+        with tempfile.TemporaryDirectory() as td:
+            folder=Path(td)
+            trainer.checkpoint(folder,20,m,opts,
+                               {"depth":.5,"normal":35.,"seg":.2},
+                               settings,"original-cache")
+            restored=model.SourceLiDeReRGBD(in_channels=8,dim=16,base_size=16)
+            opts2={k:torch.optim.AdamW(
+                    (p for p in restored.heads[k].parameters() if p.requires_grad),
+                    lr=1e-4) for k in ("depth","normal","seg")}
+            step,bests=trainer.resume_state(
+                folder,restored,opts2,settings,"original-cache",torch.device("cpu"))
+            self.assertEqual(step,20)
+            self.assertEqual(bests["normal"],35.)
+            for k,v in trainer.trainable_state(m).items():
+                self.assertTrue(torch.equal(v,trainer.trainable_state(restored)[k]))
+            with self.assertRaises(RuntimeError):
+                trainer.resume_state(folder,restored,opts2,settings,
+                                     "different-cache",torch.device("cpu"))
+        tensor=torch.randn(1,13,16,16,requires_grad=True)
+        zero=trainer.task_loss("seg",tensor,torch.full((1,16,16),255),
+                              torch.zeros((1,16,16),dtype=torch.bool),
+                              loss.DepthLoss(max_depth=80))
+        self.assertTrue(torch.isfinite(zero))
+        zero.backward()
+        self.assertTrue(torch.isfinite(tensor.grad).all())
+
 if __name__=="__main__":
     unittest.main()
