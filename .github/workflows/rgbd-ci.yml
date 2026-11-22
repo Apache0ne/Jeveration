@@ -53,3 +53,5 @@ jobs:
         run: python -m unittest discover -s tests -p "test_rgbd_v2_math.py" -v
       - name: Test v3 private task gradients, detached fusion and safe checkpoint
         run: python -m unittest discover -s tests -p "test_rgbd_v3_isolation.py" -v
+      - name: Test frozen few-shot ridge, prototypes, gradients and checkpoints
+        run: python -m unittest discover -s tests -p "test_rgbd_frozen_probe.py" -v
