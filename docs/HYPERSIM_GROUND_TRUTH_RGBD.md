@@ -42,6 +42,41 @@ Ground-truth validation report:
 
 Result /content/Jeveration_Hypersim_GT_Report.zip contains metrics.json, 20 image comparisons, individual metrics, run manifest, training metrics and validation logs. Actual weights remain in Drive.
 
+## Debugging Colab Cell 3 that stays silent
+
+When the parent notebook shows `KeyboardInterrupt` in
+`subprocess.run(...).waitpid()`, that only confirms the notebook was
+interrupted while **waiting**. It is not evidence of a model crash.
+
+The old `jeveration/__init__.py` imported the entire Jeveration
+vision-language inference stack even for the standalone RGBD trainer.
+The package now imports inference lazily, and the ground-truth encoder
+imports only during `prepare`, never during `fit`.
+
+For an immediate startup message and a 15-second heartbeat during imports,
+use:
+
+    python -u -m jeveration.rgbd_gt_launch fit \
+      --root /content/drive/MyDrive/Jeveration_GT/pilot \
+      --save-dir /content/drive/MyDrive/Jeveration_GT/pilot/checkpoints \
+      --cache-mode ram \
+      --local-cache-dir /content/jeveration_gt_pilot_cache \
+      --steps 1200 --batch-size 1 --grad-accum 16 \
+      --lr 0.00015 --warmup-steps 100 --seg-weight 0.3 \
+      --eval-every 100 --save-every 200 --save-at 500,900
+
+The launcher prints `[BOOT]` before importing Torch. After module import,
+it calls the same `fit` CLI as before. A Python stack dump is emitted
+if import exceeds 90 seconds. The trainer then emits `[STAGE]`,
+`[GTCache]` and `[FIT]` messages. Use a notebook subprocess
+`Popen(..., stdout=PIPE, stderr=STDOUT, text=True, bufsize=1)` with
+a line-by-line print to ensure log visibility in Colab.
+
+Stop older training processes before launching another copy.
+The prepared cache is never altered during training. The same
+`--save-dir` preserves existing checkpoint history and `--resume`
+restores a previously completed optimizer checkpoint.
+
 ## Colab speed fix: stage the prepared dataset on local SSD
 
 The raw Hypersim downloads, immutable 512px training caches, and checkpoints remain
